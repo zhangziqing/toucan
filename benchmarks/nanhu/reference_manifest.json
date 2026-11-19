@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "files": {
+    "references/loop1/commits.tsv.gz": {
+      "bytes": 213,
+      "sha256": "3e9ee029537973eb33a1f1a44038c562da820337716c8258f546530c34fdde4f"
+    },
+    "references/loop1/devices.tsv.gz": {
+      "bytes": 715,
+      "sha256": "69914a1bc3c7c95f65cb5f32deb49176c5af2715b237b236c4bf876311d6635a"
+    },
+    "references/loop1/watch.bin.gz": {
+      "bytes": 481,
+      "sha256": "02a7f18f140af5023f2ef6d2a781daa7376066d8c53f483910cbabb9b6968f83"
+    },
+    "references/loop1000/commits.tsv.gz": {
+      "bytes": 21509,
+      "sha256": "9c133433c2b6ea8af6524e140a569585662f41da7064aff679a4af544ec92452"
+    },
+    "references/loop1000/devices.tsv.gz": {
+      "bytes": 662,
+      "sha256": "f96e9d96f5b3e4101f23952e60472e5ae2c72920727a57232b266f1502e611fa"
+    },
+    "references/loop1000/watch.bin.gz": {
+      "bytes": 481,
+      "sha256": "02a7f18f140af5023f2ef6d2a781daa7376066d8c53f483910cbabb9b6968f83"
+    },
+    "workloads/checked-loop-1.bin": {
+      "bytes": 80,
+      "sha256": "0a0df449030c38c499ed727f448268b983de4f1e133b395d17fd741b7f837996"
+    },
+    "workloads/checked-loop-1000.bin": {
+      "bytes": 80,
+      "sha256": "c759e3067fc549ce8d05c04576c8cccda0d6a5bb02085b387c223265d3207726"
+    },
+    "workloads/checked-loop.S": {
+      "bytes": 698,
+      "sha256": "a8ac108e6c3aa7787764de81ac55ec62c97a8cc41a2b7dd85008ba53698f56da"
+    },
+    "workloads/checked-loop.ld": {
+      "bytes": 69,
+      "sha256": "62b635850573cb62c00620a31eb2aa2252f2f8a371c4e6c21c86f4e60bafd858"
+    },
+    "watches.json": {
+      "bytes": 699,
+      "sha256": "8e287218662d07c3f3bcb0a97d9e41e2f61a8bb531bb7b077aa360456b2fb71f"
+    },
+    "endpoints.json": {
+      "bytes": 1346,
+      "sha256": "12b9f3a114f0ee442d1635da0160a991bf50dde0fb8cda371d0a91b38e0771b6"
+    }
+  },
+  "references": {
+    "references/loop1/commits.tsv.gz": {
+      "uncompressed_bytes": 515,
+      "uncompressed_sha256": "9ee2c57447f6810956db0724d46d673f0d21b750a399344154f5f41d0bef86d4"
+    },
+    "references/loop1/devices.tsv.gz": {
+      "uncompressed_bytes": 4154,
+      "uncompressed_sha256": "dbccfa1ec67eda315b06cb0c87ce33587592c14eeb761991044e1b2c22ba46b5"
+    },
+    "references/loop1/watch.bin.gz": {
+      "uncompressed_bytes": 9464,
+      "uncompressed_sha256": "4397114201315cdb195cc5358f16bb891a6f36008892a1373151161a8833d3b5"
+    },
+    "references/loop1000/commits.tsv.gz": {
+      "uncompressed_bytes": 226797,
+      "uncompressed_sha256": "b616a482814c2efc7a41628871386161ac5bfd20015e8b0a8fdbbb0eec61f301"
+    },
+    "references/loop1000/devices.tsv.gz": {
+      "uncompressed_bytes": 3786,
+      "uncompressed_sha256": "dd4f827c56fd949bad5697ed6d5c50f1e59b9b4ddffa3e52e7d3155bdc9161a4"
+    },
+    "references/loop1000/watch.bin.gz": {
+      "uncompressed_bytes": 9464,
+      "uncompressed_sha256": "4397114201315cdb195cc5358f16bb891a6f36008892a1373151161a8833d3b5"
+    }
+  },
+  "evidence_archive_sha256": "c8a972f2af8bdfaf2950d843a25b8f5473d99b049223cefd6f8b6cd51ab0f206",
+  "watch_records": 169,
+  "watch_record_bytes": 56,
+  "pc_instruction_columns": "oracle_not_observed_DUT",
+  "cross_layout_pool_comparison": false
+}
