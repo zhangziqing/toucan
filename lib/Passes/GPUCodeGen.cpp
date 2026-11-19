@@ -1,3 +1,4 @@
+#include "WidePool.h"
 
 #include "circt/Dialect/OM/OMDialect.h"
 #include "circt/Dialect/SV/SVDialect.h"
@@ -52,6 +53,8 @@
 #include "toucan/MicroPartitioner.h"
 
 #include "toucan/PartitioningManager.h"
+#include "StagedRepair.h"
+#include "TwoRoundAudit.h"
 
 using namespace toucan;
 using namespace circt;
@@ -269,8 +272,7 @@ struct GPUCodeGenPass : toucan::impl::GPUCodeGenBase<GPUCodeGenPass>, CodeGenHel
 
   void populateSinglePartition(const CGPartitionMetaInfo &part, uint32_t partId) {
     toucanGPUSim::SimPartitionInfo partInfo;
-    // at lease 1 level
-    assert(part.microPartOps.size() >= 1);
+    // A terminal stage can contain only exchange reads and state effects.
     partInfo.valuePool.resize(part.numConstsInValuePool);
     for (size_t i = 0; i < part.numConstsInValuePool; i++) {
       partInfo.valuePool[i] = part.constValuePool[i];
@@ -278,16 +280,12 @@ struct GPUCodeGenPass : toucan::impl::GPUCodeGenBase<GPUCodeGenPass>, CodeGenHel
     assert(part.constValuePool.size() == part.numConstsInValuePool);
     partInfo.valuePoolSize = part.numTotalValues;
 
-    if (partInfo.valuePoolSize > UINT16_MAX) {
-      llvm::errs() << "Value pool size is " << partInfo.valuePoolSize
-                   << ", which exceeds UINT16_MAX. This should not happen.\n";
-    }
-    assert(partInfo.valuePoolSize <= UINT16_MAX && "Value pool is too large");
+    assert(partInfo.valuePoolSize <= toucanGPUSim::widePoolMaxBytes);
 
     // copy const vec data
     std::copy(part.constVecPool.begin(), part.constVecPool.end(), std::back_inserter(partInfo.constVecPool));
 
-    assert(part.exchangeReadOps.empty() || part.regReadOps.empty());
+    // Intermediate stages can combine register snapshots and exchange inputs.
 
     // reg reads
     partInfo.ops_l0_regRead.reserve(part.regReadOps.size());
@@ -325,15 +323,18 @@ struct GPUCodeGenPass : toucan::impl::GPUCodeGenBase<GPUCodeGenPass>, CodeGenHel
     // ensure reg reads mem locations in ascending order
     if (partInfo.ops_l0_exchangeRead.size() > 1) {
       auto er_exg_last = partInfo.ops_l0_exchangeRead.front().exchange;
-      auto er_local_last = partInfo.ops_l0_exchangeRead.front().result;
+      mlir::DenseSet<uint32_t> destinations;
+      destinations.insert(partInfo.ops_l0_exchangeRead.front().result);
 
       for (size_t i = 1; i < partInfo.ops_l0_exchangeRead.size(); i++) {
         auto er_exg = partInfo.ops_l0_exchangeRead[i].exchange;
         auto er_local = partInfo.ops_l0_exchangeRead[i].result;
         assert(er_exg > er_exg_last);
-        assert(er_local > er_local_last);
+        // Input/output aliases can put a later exchange input in an earlier slot.
+        assert(er_local < partInfo.valuePoolSize);
+        assert(destinations.insert(er_local).second && "Overlapping exchange destinations");
         er_exg_last = er_exg;
-        er_local_last = er_local;
+
       }
     }
 
@@ -424,9 +425,6 @@ struct GPUCodeGenPass : toucan::impl::GPUCodeGenBase<GPUCodeGenPass>, CodeGenHel
 
     // mem writes
     for (const auto &opMeta : part.memWriteOps) {
-      assert(opMeta.memWrite.addrVec <= UINT16_MAX);
-      assert(opMeta.memWrite.dat <= UINT16_MAX);
-      assert(opMeta.memWrite.en <= UINT16_MAX);
 
       toucanGPUSim::CGMemWriteMetaInfo info;
       info.hasMultipleWriter = opMeta.memWrite.hasMultipleWriter;
@@ -441,7 +439,6 @@ struct GPUCodeGenPass : toucan::impl::GPUCodeGenBase<GPUCodeGenPass>, CodeGenHel
 
     // print
     for (const auto &opMeta : part.printOps) {
-      assert(opMeta.print.en <= UINT16_MAX);
       assert(opMeta.print.msg <= UINT16_MAX);
 
       toucanGPUSim::CGPrintMetaInfo info;
@@ -453,7 +450,6 @@ struct GPUCodeGenPass : toucan::impl::GPUCodeGenBase<GPUCodeGenPass>, CodeGenHel
 
     // stop
     for (const auto &opMeta : part.stopOps) {
-      assert(opMeta.stop.en <= UINT16_MAX);
 
       toucanGPUSim::CGStopMetaInfo info;
       info.en = opMeta.stop.en;
@@ -466,7 +462,6 @@ struct GPUCodeGenPass : toucan::impl::GPUCodeGenBase<GPUCodeGenPass>, CodeGenHel
     uint32_t rw_bulk_start_dat = 0;
     uint32_t rw_bulk_start_reg = 0;
     for (const auto &opMeta : part.regWriteOps) {
-      assert(opMeta.regWrite.dat <= UINT16_MAX);
 
       if (rw_bulk_size == 0) {
         rw_bulk_start_dat = opMeta.regWrite.dat;
@@ -499,8 +494,8 @@ struct GPUCodeGenPass : toucan::impl::GPUCodeGenBase<GPUCodeGenPass>, CodeGenHel
       // Note: This is guarenteed by LocalValueAllocator
       assert(rw_bulk_start_dat == 16 && "Local data should starts from shared memory addr 16");
       assert(rw_bulk_start_reg % 16 == 0 && "Register should be aligned to 16B");
-      assert(rw_bulk_size < UINT16_MAX && "Register write count should fit in uint16");
 
+      assert(rw_bulk_start_dat + rw_bulk_size <= partInfo.valuePoolSize);
       rwInfo.reg = rw_bulk_start_reg;
       rwInfo.dat = rw_bulk_start_dat;
       rwInfo.count = rw_bulk_size;
@@ -517,7 +512,6 @@ struct GPUCodeGenPass : toucan::impl::GPUCodeGenBase<GPUCodeGenPass>, CodeGenHel
     uint32_t ew_bulk_start_dat = 0;
     uint32_t ew_bulk_start_exg = 0;
     for (const auto &opMeta : part.exchangeWriteOps) {
-      assert(opMeta.exgWrite.localVal <= UINT16_MAX);
 
       if (ew_bulk_size == 0) {
         ew_bulk_start_dat = opMeta.exgWrite.localVal;
@@ -549,8 +543,8 @@ struct GPUCodeGenPass : toucan::impl::GPUCodeGenBase<GPUCodeGenPass>, CodeGenHel
       // Note: This is guarenteed by LocalValueAllocator
       assert(ew_bulk_start_dat == 16 && "Local data should starts from shared memory addr 16");
       assert(ew_bulk_start_exg % 16 == 0 && "Exchange should be aligned to 16B");
-      assert(ew_bulk_size < UINT16_MAX && "Exchange write count should fit in uint16");
 
+      assert(ew_bulk_start_dat + ew_bulk_size <= partInfo.valuePoolSize);
       ewInfo.exchange = ew_bulk_start_exg;
       ewInfo.dat = ew_bulk_start_dat;
       ewInfo.count = ew_bulk_size;
@@ -665,6 +659,7 @@ struct GPUCodeGenPass : toucan::impl::GPUCodeGenBase<GPUCodeGenPass>, CodeGenHel
       pm.updateGraphWeight_r0();
       pm.updateGraphWeight_r1();
 
+      if (!capacity::stagesOnly) {
       assert(ibFactor > 0.0f);
       ret = pm.runStage2RepCutPartitioner(partSizeRatio, ibFactor);
       if (failed(ret)) {
@@ -674,6 +669,8 @@ struct GPUCodeGenPass : toucan::impl::GPUCodeGenBase<GPUCodeGenPass>, CodeGenHel
 
       // create codegen data for scheduler. Also merges special MParts.
       pm.collectRepCutPartitionCodeGenData();
+
+      }
 
       // verify exchange index. can be removed
       assert(pm.exchangeValPool.size() == pm.exchangeValues.size());
@@ -691,6 +688,10 @@ struct GPUCodeGenPass : toucan::impl::GPUCodeGenBase<GPUCodeGenPass>, CodeGenHel
     scheduler.regionPartData.resize(2);
     std::swap(scheduler.regionPartData[0], pm.partCodeGenData_r0);
     std::swap(scheduler.regionPartData[1], pm.partCodeGenData_r1);
+    if (failed(two_round::prepare(scheduler, pm, graph.g))) {
+      signalPassFailure();
+      return;
+    }
     scheduler.buildDummyVtxIndexInVec(*(pm.mp));
     scheduler.takeVecTables(*(pm.mp));
 
@@ -758,7 +759,7 @@ struct GPUCodeGenPass : toucan::impl::GPUCodeGenBase<GPUCodeGenPass>, CodeGenHel
 
     llvm::outs() << "=================== Serialize Netlist ===================\n";
     // Save. serialize
-    auto outputDesignFileFullName = std::filesystem::path(outputDirectory.getValue()) / outputDesignFilename.getValue();
+    auto outputDesignFileFullName = std::filesystem::path(outputDirectory.getValue()) / "GPUSimDesign.wide32.bin";
     std::ofstream ofs_design(outputDesignFileFullName, std::ios::binary | std::ios::out);
     toucanGPUSim::serializeSimDesignInfo(ofs_design, designInfo);
     ofs_design.close();
