@@ -284,23 +284,25 @@ public:
     return shiftCore(rewriter, op, intermediateResults, shamt, fillingValue, realInputWidth, namehint, false);
   }
 
-  // This function may modify shamtValue!
-  // For now, don't check if shamt has extra bits. leave it to canonicalizer.
-  size_t limitShamtWidth(Value &inputValue, Value &shamtValue, RewriterBase &rewriter, Operation *op) const {
-    auto inputValueWidth = hw::getBitWidth(inputValue.getType());
-    auto necessaryShamtBits = llvm::Log2_64_Ceil(inputValueWidth);
+  // Keep enough bits to represent the data width itself as an overshift
+  // sentinel. If any higher amount bit is set, replace the amount with that
+  // sentinel instead of truncating it. The existing core then returns zero
+  // or sign fill, with no assumptions about reachable input values.
+  Value boundShiftAmount(Value inputValue, Value shamtValue, RewriterBase &rewriter, Operation *op) const {
+    auto inputWidth = hw::getBitWidth(inputValue.getType());
+    auto keptBits = llvm::Log2_64_Ceil(inputWidth + 1);
     auto shamtWidth = hw::getBitWidth(shamtValue.getType());
+    if (shamtWidth <= keptBits)
+      return shamtValue;
 
-    if (shamtWidth > necessaryShamtBits) {
-      op->emitWarning() << "Shamt too large: " << necessaryShamtBits << " bits of shamt is sufficient for "
-                        << inputValueWidth << " width inputs, but got " << shamtWidth
-                        << ". Extra bits will be trimmed.";
-      auto shamtExtractOp = rewriter.create<comb::ExtractOp>(op->getLoc(), shamtValue, 0, necessaryShamtBits);
-      shamtValue = shamtExtractOp.getResult();
-      shamtWidth = necessaryShamtBits;
-    }
-    return shamtWidth;
+    auto high = rewriter.create<comb::ExtractOp>(op->getLoc(), shamtValue, keptBits, shamtWidth - keptBits);
+    auto zero = rewriter.create<hw::ConstantOp>(op->getLoc(), high.getType(), 0);
+    auto overflow = rewriter.create<comb::ICmpOp>(op->getLoc(), comb::ICmpPredicate::ne, high, zero, true);
+    auto low = rewriter.create<comb::ExtractOp>(op->getLoc(), shamtValue, 0, keptBits);
+    auto sentinel = rewriter.create<hw::ConstantOp>(op->getLoc(), low.getType(), inputWidth);
+    return rewriter.create<comb::MuxOp>(op->getLoc(), overflow, sentinel, low, true).getResult();
   }
+
 };
 
 struct LowerCombShlOp : OpRewritePattern<comb::ShlOp>, DynamicShiftOperations {
@@ -309,15 +311,8 @@ struct LowerCombShlOp : OpRewritePattern<comb::ShlOp>, DynamicShiftOperations {
   LogicalResult matchAndRewrite(comb::ShlOp shlOp, PatternRewriter &rewriter) const final {
     auto inputValue = shlOp.getLhs();
     auto shamtValue = extractMinimumWidth(shlOp.getRhs(), rewriter, shlOp.getOperation());
-    auto shamtWidth = hw::getBitWidth(shamtValue.getType());
-    if (shamtWidth > 30) {
-      shlOp.emitError("shl: Shift amount is too large: " + std::to_string(shamtWidth));
-      return failure();
-    }
+    shamtValue = boundShiftAmount(inputValue, shamtValue, rewriter, shlOp.getOperation());
     numCombShlInModules++;
-
-    // shamtWidth = limitShamtWidth(inputValue, shamtValue, rewriter, shlOp.getOperation());
-    assert(hw::getBitWidth(shamtValue.getType()) == shamtWidth);
 
     // Split input signals
 
@@ -348,11 +343,7 @@ struct LowerCombShrUOp : OpRewritePattern<comb::ShrUOp>, DynamicShiftOperations 
 
     auto inputValue = shruOp.getLhs();
     auto shamtValue = extractMinimumWidth(shruOp.getRhs(), rewriter, shruOp.getOperation());
-    auto shamtWidth = hw::getBitWidth(shamtValue.getType());
-    if (shamtWidth > 30) {
-      shruOp.emitError("shru: Shift amount is too large: " + std::to_string(shamtWidth));
-      return failure();
-    }
+    shamtValue = boundShiftAmount(inputValue, shamtValue, rewriter, shruOp.getOperation());
 
     auto resultWidth = hw::getBitWidth(shruOp.getResult().getType());
     if (resultWidth == 1) {
@@ -404,18 +395,15 @@ struct LowerCombShrSOp : OpRewritePattern<comb::ShrSOp>, DynamicShiftOperations 
   LogicalResult matchAndRewrite(comb::ShrSOp shrsOp, PatternRewriter &rewriter) const final {
     auto inputValue = shrsOp.getLhs();
     auto shamtValue = extractMinimumWidth(shrsOp.getRhs(), rewriter, shrsOp.getOperation());
-    auto shamtWidth = hw::getBitWidth(shamtValue.getType());
-    if (shamtWidth > 30) {
-      shrsOp.emitError("shrs: Shift amount is too large: " + std::to_string(shamtWidth));
-      return failure();
-    }
+    shamtValue = boundShiftAmount(inputValue, shamtValue, rewriter, shrsOp.getOperation());
     numCombShrSInModules++;
 
     auto inputValueWidth = hw::getBitWidth(inputValue.getType());
-    assert(inputValueWidth > 1);
-
-    // shamtWidth = limitShamtWidth(inputValue, shamtValue, rewriter, shrsOp.getOperation());
-    assert(hw::getBitWidth(shamtValue.getType()) == shamtWidth);
+    if (inputValueWidth == 1) {
+      // A signed one-bit value is either zero or minus one at every amount.
+      rewriter.replaceOp(shrsOp, inputValue);
+      return success();
+    }
 
     auto zeroConst4bOp = rewriter.create<hw::ConstantOp>(shrsOp.getLoc(), rewriter.getI4Type(), 0);
     auto zeroConst4bValue = zeroConst4bOp.getResult();

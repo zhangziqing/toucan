@@ -269,7 +269,9 @@ void attachNameHintAndFragmentId(mlir::RewriterBase &rewriter, mlir::Operation *
 mlir::Value generate_mux_chain_for_array(mlir::Operation *op, mlir::RewriterBase &rewriter,
                                          llvm::SmallVector<mlir::Value> values, mlir::Value index) {
   SmallVector<mlir::Value> outputs, inputs;
-  inputs.append(values.begin(), values.end());
+  assert(!values.empty());
+  // HW operands are highest-index first; keep reachable low indices first.
+  inputs.append(values.rbegin(), values.rend());
   auto elemType = values[0].getType();
 
   // Use 0 as default value
@@ -279,16 +281,11 @@ mlir::Value generate_mux_chain_for_array(mlir::Operation *op, mlir::RewriterBase
 
   auto indexBits = hw::getBitWidth(index.getType());
 
-  assert(indexBits < 20);
-  if (!(static_cast<size_t>(1L << indexBits) >= values.size())) {
-    op->emitWarning("Valid index bits is not enough to indexing entire vector");
-
-    size_t maxIndexElems = 1 << indexBits;
-    inputs.resize(maxIndexElems);
-  }
+  // The index may have been narrowed by removing constant high zero bits.
+  if (indexBits < llvm::Log2_64_Ceil(inputs.size()))
+    inputs.resize(size_t(1) << indexBits);
 
   for (int64_t level = 0; level < indexBits; level++) {
-    assert(inputs.size() > 1);
     outputs.clear();
 
     // Extract En signal for all muxes at this level
@@ -298,9 +295,9 @@ mlir::Value generate_mux_chain_for_array(mlir::Operation *op, mlir::RewriterBase
     for (size_t mux_id = 0; mux_id < ((inputs.size() + 1) >> 1); mux_id++) {
       // fval: low addr, tval: high addr
       size_t val_id = mux_id << 1;
-      auto tVal = (val_id <= inputs.size()) ? inputs[val_id] : defaultValue;
+      auto fVal = (val_id < inputs.size()) ? inputs[val_id] : defaultValue;
       val_id++;
-      auto fVal = (val_id <= inputs.size()) ? inputs[val_id] : defaultValue;
+      auto tVal = (val_id < inputs.size()) ? inputs[val_id] : defaultValue;
 
       auto muxOp = rewriter.create<comb::MuxOp>(op->getLoc(), addrFragment, tVal, fVal);
 
@@ -555,9 +552,9 @@ Value signExtValueToNext4b(PatternRewriter &rewriter, mlir::Location loc, Value 
 }
 
 mlir::Value convertFullVectorBackToValue(mlir::PatternRewriter &rewriter, mlir::Location loc, mlir::Value vecVal) {
-  assert(vecVal.getType().cast<VecType>().getElementWidth() == 4);
+  assert(::mlir::cast<VecType>(vecVal.getType()).getElementWidth() == 4);
 
-  auto totalVecBits = vecVal.getType().cast<VecType>().getTotalWidth();
+  auto totalVecBits = ::mlir::cast<VecType>(vecVal.getType()).getTotalWidth();
   assert(totalVecBits % 4 == 0);
 
   auto numVecSections = totalVecBits / 4;
