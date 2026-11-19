@@ -31,6 +31,7 @@
 #include "toucan/ToucanPasses.h"
 
 #include <filesystem>
+#include "SingleClock.h"
 
 using namespace llvm;
 using namespace mlir;
@@ -63,6 +64,8 @@ static cl::opt<bool> verbose("v", cl::desc("verbose"), cl::init(false), cl::cat(
 static cl::opt<bool> gpuCodeGen("gpu", cl::desc("Generate GPU code"), cl::init(false), cl::cat(mainCategory));
 // static cl::opt<bool> cpuCodeGen("cpu", cl::desc("Generate CPU code (single thread)"), cl::init(false), cl::cat(mainCategory));
 static cl::opt<bool> dumpOutputMLIR("dump", cl::desc("Dump output.mlir"), cl::init(false), cl::cat(mainCategory));
+static cl::opt<bool> singleClockModel("single-clock-model", cl::init(false));
+static cl::opt<bool> singleClockOnly("single-clock-only", cl::init(false));
 static cl::opt<bool> removeSVDialect("removeSVDialect", cl::desc("Remove print and assertion"), cl::init(false), cl::cat(mainCategory));
 // static cl::opt<uint32_t> targetGPUSMs("gpuSMs", cl::desc("Target GPU SM count. This argument affects number of partitions if partSize is not explicitely given."), cl::init(142), cl::cat(mainCategory));
 // static cl::opt<uint32_t> partitionNumRegions("numRegions", cl::desc("Partitioning region count."), cl::init(4), cl::cat(mainCategory));
@@ -115,6 +118,17 @@ static LogicalResult compileAndEmit(
         pm.addPass(toucan::createRemoveSVnOMPass());
         // SplitRWPort
         pm.addPass(toucan::createSplitFirMemRWPortsPass());
+        if (singleClockModel || singleClockOnly) pm.addPass(std::make_unique<single_clock::Normalize>());
+
+        if (singleClockOnly) {
+          if (failed(pm.run(mod.get()))) return failure();
+          auto output = openOutputFile((outputDir / "normalized.mlir").string(), &errorMsg);
+          if (!output) return failure();
+          mod->print(output->os());
+          output->keep();
+          return success();
+        }
+
         // Expand memory delays
         pm.addPass(toucan::createExpandMemoryDelayPass());
         // // Remove mem read en signal
@@ -133,6 +147,7 @@ static LogicalResult compileAndEmit(
         // Lower registers and memory to 4b
         pm.addPass(toucan::createLowerRegMemTo4BPass());
         // By this time clock should be removed by DCE. AsClock is not supported
+        if (singleClockModel) pm.addPass(std::make_unique<single_clock::RemoveDeadClocks>());
         pm.addPass(toucan::createEnsureNoClockOpPass());
 
         pm.addPass(toucan::createFactorHWMiscPass());
