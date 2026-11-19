@@ -1,3 +1,4 @@
+#include "WidePool.h"
 #include "circt/Dialect/Comb/CombDialect.h"
 #include "circt/Dialect/Comb/CombOps.h"
 #include "circt/Dialect/HW/HWTypes.h"
@@ -25,6 +26,7 @@
 #include "toucan/MicroPartLocalValueAllocator.h"
 #include "toucan/MicroPartitioner.h"
 #include "toucan/MultiRegionMicroPartScheduler.h"
+#include "ReaderHistory.h"
 #include "toucan/PartitioningGraph.h"
 #include "toucan/PartitioningManager.h"
 #include "toucan/ToucanAnalysis.h"
@@ -254,13 +256,10 @@ void MultiRegionMicroPartScheduler::sortRegistersForLocality_2(
       assert(eachPart.allRegWrites.empty());
     }
   }
-  for (size_t i = 1; i < numRegions; i++) {
-    for (const auto &eachPart : regionPartData[i]) {
-      assert(eachPart.allRegReads.empty());
-    }
-  }
-
-  auto &firstRegion = regionPartData[0];
+  std::vector<const RepCutPartitionCodeGenData *> readers;
+  for (size_t i = 0; i + 1 < numRegions; ++i)
+    for (const auto &part : regionPartData[i]) readers.push_back(&part);
+  for (const auto &part : regionPartData.back()) assert(part.allRegReads.empty());
   auto &lastRegion = regionPartData.back();
   // Note: there should be no duplicate regwrite.
 
@@ -270,9 +269,9 @@ void MultiRegionMicroPartScheduler::sortRegistersForLocality_2(
   mlir::DenseSet<mlir::TypedValue<toucan::RegType>> regValRead, regValWrite;
 
   // Collect reg read info
-  for (size_t partId = 0; partId < firstRegion.size(); partId++) {
+  for (size_t partId = 0; partId < readers.size(); partId++) {
     // only have reg read
-    for (auto &regVal : firstRegion[partId].readRegs) {
+    for (auto &regVal : readers[partId]->readRegs) {
       regValRead.insert(regVal);
       if (!regValToReaderPartIds.contains(regVal)) {
         regValToReaderPartIds[regVal] = {};
@@ -294,7 +293,6 @@ void MultiRegionMicroPartScheduler::sortRegistersForLocality_2(
   // reg vals with no writer
   mlir::SmallVector<mlir::TypedValue<toucan::RegType>> sortedReadOnlyVals;
 
-  auto numReadParts = firstRegion.size();
   auto numWriteParts = lastRegion.size();
 
   // Segment by writer, then reader
@@ -306,19 +304,12 @@ void MultiRegionMicroPartScheduler::sortRegistersForLocality_2(
     // segment by reader
     regOrdered.emplace_back(lastRegion[writerPartId].writeRegs);
 
-    mlir::DenseSet<mlir::Value> valsReadByCurrentPart;
-    for (size_t readerPartId = 0; readerPartId < numReadParts; readerPartId++) {
-      valsReadByCurrentPart.clear();
-
-      for (auto &eachVal : firstRegion[readerPartId].readRegs)
-        valsReadByCurrentPart.insert(eachVal);
-
-      std::stable_sort(regOrdered.back().begin(), regOrdered.back().end(), [&](const auto &a, const auto &b) {
-        auto a_read_by_current_part = valsReadByCurrentPart.contains(a);
-        auto b_read_by_current_part = valsReadByCurrentPart.contains(b);
-        return a_read_by_current_part < b_read_by_current_part;
-      });
-    }
+    const mlir::SmallVector<uint32_t> noReaders;
+    sortByReaderHistory(regOrdered.back(), [&](const auto &value)
+                            -> const mlir::SmallVector<uint32_t> & {
+      auto found = regValToReaderPartIds.find(value);
+      return found == regValToReaderPartIds.end() ? noReaders : found->second;
+    });
   }
 
   // Special handling for read-only vals
@@ -545,9 +536,8 @@ void MultiRegionMicroPartScheduler::generateRegMemLayout(const PartitioningGraph
   // fillRegOrderTable();
 
   // Coaleasce register access.
-  for (auto &eachPartData : regionPartData[0]) {
-    sortRegReadOps(eachPartData);
-  }
+  for (auto &region : regionPartData)
+    for (auto &part : region) sortRegReadOps(part);
   for (auto &eachPartData : regionPartData.back()) {
     sortRegWriteOps(eachPartData);
   }
@@ -582,40 +572,25 @@ void MultiRegionMicroPartScheduler::sortExchangeValsForLocality(
     }
   }
 
-  // get part read/write vals
-  size_t flatPartId = 0;
-  for (size_t regionId = 0; regionId < regionPartData.size(); regionId++) {
-    auto &currentRegionData = regionPartData[regionId];
-    for (auto &partData : currentRegionData) {
-      assert(flatPartId < numTotalParts);
-
-      if (partData.allExgWriteVals.empty())
-        continue;
-
-      exchangeValOrdered.emplace_back();
-      exchangeValOrdered.back().assign(partData.allExgWriteVals);
-
-      auto &thisSectionVals = exchangeValOrdered.back();
-
-      mlir::DenseSet<mlir::Value> valsReadByCurrentPart;
-
-      for (const auto &each_region : regionPartData) {
-        for (const auto &each_part : each_region) {
-          if (each_part.allExgReadVals.empty())
-            continue;
-
-          valsReadByCurrentPart.clear();
-          valsReadByCurrentPart.insert(each_part.allExgReadVals.begin(), each_part.allExgReadVals.end());
-
-          std::stable_sort(thisSectionVals.begin(), thisSectionVals.end(),
-                           [&valsReadByCurrentPart](const mlir::Value &a, const mlir::Value &b) {
-                             auto a_readByCurrentPart = valsReadByCurrentPart.contains(a);
-                             auto b_readByCurrentPart = valsReadByCurrentPart.contains(b);
-
-                             return a_readByCurrentPart < b_readByCurrentPart;
-                           });
-        }
-      }
+  mlir::DenseMap<mlir::Value, mlir::SmallVector<uint32_t>> readers;
+  uint32_t readerId = 0;
+  for (const auto &region : regionPartData) {
+    for (const auto &part : region) {
+      for (const auto &value : part.allExgReadVals) readers[value].push_back(readerId);
+      ++readerId;
+    }
+  }
+  assert(readerId == numTotalParts);
+  const mlir::SmallVector<uint32_t> noReaders;
+  for (const auto &region : regionPartData) {
+    for (const auto &part : region) {
+      if (part.allExgWriteVals.empty()) continue;
+      exchangeValOrdered.emplace_back(part.allExgWriteVals);
+      sortByReaderHistory(exchangeValOrdered.back(), [&](const auto &value)
+                              -> const mlir::SmallVector<uint32_t> & {
+        auto found = readers.find(value);
+        return found == readers.end() ? noReaders : found->second;
+      });
     }
   }
 }
@@ -690,7 +665,7 @@ void MultiRegionMicroPartScheduler::fillExchangePool(mlir::SmallVector<mlir::Sma
 
 void MultiRegionMicroPartScheduler::generateExchangeLayout(const mlir::SmallVector<mlir::Value> &exchangeValPool) {
   auto numRegions = regionPartData.size();
-  assert(numRegions == 2);
+  assert(numRegions > 0);
 
   // region 0 has writer, region 1 has reader
   // copy to internal pool
@@ -706,12 +681,11 @@ void MultiRegionMicroPartScheduler::generateExchangeLayout(const mlir::SmallVect
 
   fillExchangePool(exchangeValIdOrdered);
 
-  for (auto &eachPartData : regionPartData[0]) {
-    sortExchangeWriteOps(eachPartData);
-  }
-  for (auto &eachPartData : regionPartData.back()) {
-    sortExchangeReadOps(eachPartData);
-  }
+  for (auto &region : regionPartData)
+    for (auto &part : region) {
+      sortExchangeWriteOps(part);
+      sortExchangeReadOps(part);
+    }
 }
 
 // Collect const decls. DOES NOT collect const vec decls
@@ -1169,7 +1143,7 @@ void MultiRegionMicroPartScheduler::scheduleRegularMicroPart(
   // Values that need to be written back to SMem at last level
   struct PendingWriteBack {
     mlir::Value val;
-    uint16_t sMemLocation;
+    uint32_t sMemLocation;
   };
   mlir::SmallVector<PendingWriteBack> pendingWriteBackValueAndLocation;
   pendingWriteBackValueAndLocation.reserve(32);
@@ -1177,7 +1151,7 @@ void MultiRegionMicroPartScheduler::scheduleRegularMicroPart(
   {
     // first level
     uint8_t opIndex = 0;
-    mlir::SmallVector<uint16_t> topLevelOpInputValIndecies;
+    mlir::SmallVector<uint32_t> topLevelOpInputValIndecies;
     // For double check
     mlir::DenseSet<mlir::Value> allInputVals;
     mlir::SmallVector<mlir::Value> topLevelResultVals;
@@ -1205,7 +1179,7 @@ void MultiRegionMicroPartScheduler::scheduleRegularMicroPart(
       for (auto val : lutOp.getInputs()) {
         assert(valToValId.contains(val));
         auto valId = valToValId.at(val);
-        assert(valId < UINT16_MAX);
+        assert(valId < UINT32_MAX);
         assert(pos == topLevelOpInputValIndecies.size());
         topLevelOpInputValIndecies.push_back(valId);
         pos++;
@@ -1226,7 +1200,7 @@ void MultiRegionMicroPartScheduler::scheduleRegularMicroPart(
         // This value need to be passed through entire micro part
 
         auto depValueIdInSMem = valToValId.at(depValue);
-        assert(depValueIdInSMem < UINT16_MAX);
+        assert(depValueIdInSMem < UINT32_MAX);
 
         auto vecVtx = newNodeIdToOriginalVecDeclId.at(eachVtx);
         auto vecVal = cast<toucan::DefVectorOp>(graph[vecVtx].op).getHandle();
@@ -1235,16 +1209,16 @@ void MultiRegionMicroPartScheduler::scheduleRegularMicroPart(
 
         auto vecValIdInSMem = valToValId.at(vecVal);
         auto resultIndex = vecValIdInSMem + indexInVec;
-        assert(resultIndex < UINT16_MAX);
+        assert(resultIndex < UINT32_MAX);
 
         // this value should be written to smem at last level!
-        pendingWriteBackValueAndLocation.push_back({depValue, static_cast<uint16_t>(resultIndex)});
+        pendingWriteBackValueAndLocation.push_back({depValue, static_cast<uint32_t>(resultIndex)});
 
         // assert(!shuffleValueToId.contains(depValue));
         if (!shuffleValueToId_next.contains(depValue)) {
           // This depValue has not been brought to wrap
           // create a NOP
-          part.topLevel.push_back({LUTOpName::LUT_Nop, 0, 0, static_cast<uint16_t>(depValueIdInSMem)});
+          part.topLevel.push_back({LUTOpName::LUT_Nop, 0, 0, static_cast<uint32_t>(depValueIdInSMem)});
           topLevelResultVals.push_back(depValue);
           auto resultValShuffleId = static_cast<uint8_t>(opIndex + 32);
           shuffleValueToId_next[depValue] = resultValShuffleId;
@@ -1272,8 +1246,8 @@ void MultiRegionMicroPartScheduler::scheduleRegularMicroPart(
         if (mPart.outputValueSet.contains(resultVal)) {
           assert(valToValId.contains(resultVal));
           auto resultIndex = valToValId.at(resultVal);
-          assert(resultIndex < UINT16_MAX);
-          pendingWriteBackValueAndLocation.push_back({resultVal, static_cast<uint16_t>(resultIndex)});
+          assert(resultIndex < UINT32_MAX);
+          pendingWriteBackValueAndLocation.push_back({resultVal, static_cast<uint32_t>(resultIndex)});
         }
 
         assert(valueToLifeCycle.contains(resultVal));
@@ -1317,9 +1291,9 @@ void MultiRegionMicroPartScheduler::scheduleRegularMicroPart(
         assert(valToValId.contains(eachInputVal));
 
         auto inputValIdInSmem = valToValId.at(eachInputVal);
-        assert(inputValIdInSmem < UINT16_MAX);
+        assert(inputValIdInSmem < UINT32_MAX);
 
-        part.topLevel.push_back({LUTOpName::LUT_Nop, 0, 0, static_cast<uint16_t>(inputValIdInSmem)});
+        part.topLevel.push_back({LUTOpName::LUT_Nop, 0, 0, static_cast<uint32_t>(inputValIdInSmem)});
         topLevelResultVals.push_back(eachInputVal);
 
         assert(!shuffleValueToId_next.contains(eachInputVal));
@@ -1519,10 +1493,10 @@ void MultiRegionMicroPartScheduler::scheduleRegularMicroPart(
 
         auto vecValIdInSMem = valToValId.at(vecVal);
         auto resultIndex = vecValIdInSMem + indexInVec;
-        assert(resultIndex < UINT16_MAX);
+        assert(resultIndex < UINT32_MAX);
 
         // this value should be written to smem at last level!
-        pendingWriteBackValueAndLocation.push_back({depValue, static_cast<uint16_t>(resultIndex)});
+        pendingWriteBackValueAndLocation.push_back({depValue, static_cast<uint32_t>(resultIndex)});
 
         // also create a NOP if needed
         if (!shuffleValueToId_next.contains(depValue)) {
@@ -1563,7 +1537,7 @@ void MultiRegionMicroPartScheduler::scheduleRegularMicroPart(
           assert(valToValId.contains(resultVal));
 
           auto resultValIdInSMem = valToValId.at(resultVal);
-          pendingWriteBackValueAndLocation.push_back({resultVal, static_cast<uint16_t>(resultValIdInSMem)});
+          pendingWriteBackValueAndLocation.push_back({resultVal, static_cast<uint32_t>(resultValIdInSMem)});
         }
       }
     }
@@ -1614,7 +1588,7 @@ void MultiRegionMicroPartScheduler::scheduleNOPMicroPart(
 
   int opIndex = 0;
   for (auto &eachNOP : mPart.nops) {
-    uint16_t inputValId = getNOPInputId(eachNOP);
+    uint32_t inputValId = getNOPInputId(eachNOP);
 
     auto resultVal = eachNOP.getResult();
 
@@ -1623,7 +1597,7 @@ void MultiRegionMicroPartScheduler::scheduleNOPMicroPart(
 
     part.topLevel.push_back({LUTOpName::LUT_Nop, 0, 0, inputValId});
 
-    auto resultValSMemIdx = static_cast<uint16_t>(valToValId.at(resultVal));
+    auto resultValSMemIdx = static_cast<uint32_t>(valToValId.at(resultVal));
     // Shuffle operands 0..15 are constants; lanes are encoded as 32..63.
     part.lastLevel.push_back({static_cast<uint8_t>(opIndex + 32), resultValSMemIdx});
 
@@ -1655,7 +1629,7 @@ void MultiRegionMicroPartScheduler::scheduleSpecialMicroPart(const PartitioningG
 
         assert(valToValId.contains(vecVal));
         auto vecValIdInSMem = valToValId.at(vecVal);
-        assert(vecValIdInSMem < UINT16_MAX);
+        assert(vecValIdInSMem < UINT32_MAX);
 
         auto vecLength = vecVal.getType().getLength();
         assert(vecLength < UINT16_MAX);
@@ -1670,7 +1644,7 @@ void MultiRegionMicroPartScheduler::scheduleSpecialMicroPart(const PartitioningG
         auto outRangeValue = vecReadOp.getOutRangeValue();
         assert(valToValId.contains(outRangeValue));
         auto outRangeValueId = valToValId.at(outRangeValue);
-        assert(outRangeValueId < UINT16_MAX);
+        assert(outRangeValueId < UINT32_MAX);
 
         auto indexValues = vecReadOp.getIndicies();
         auto numIndexValues = indexValues.size();
@@ -1685,7 +1659,7 @@ void MultiRegionMicroPartScheduler::scheduleSpecialMicroPart(const PartitioningG
         for (auto val : indexValues) {
           assert(valToValId.contains(val));
           auto valId = valToValId.at(val);
-          assert(valId < UINT16_MAX);
+          assert(valId < UINT32_MAX);
           vecReadOpIndexIds[pos] = valId;
           pos++;
         }
@@ -1693,14 +1667,14 @@ void MultiRegionMicroPartScheduler::scheduleSpecialMicroPart(const PartitioningG
         auto resultVal = vecReadOp.getResult();
         assert(valToValId.contains(resultVal));
         auto resultValId = valToValId.at(resultVal);
-        assert(resultValId < UINT16_MAX);
+        assert(resultValId < UINT32_MAX);
 
-        part.vecRead.push_back({static_cast<uint16_t>(vecValIdInSMem), static_cast<uint16_t>(vecLength), isConstVec,
-                                static_cast<uint16_t>(offset), static_cast<uint16_t>(vecReadOpIndexIds[0]),
-                                static_cast<uint16_t>(vecReadOpIndexIds[1]),
-                                static_cast<uint16_t>(vecReadOpIndexIds[2]),
-                                static_cast<uint16_t>(vecReadOpIndexIds[3]), static_cast<uint16_t>(outRangeValueId),
-                                static_cast<uint16_t>(resultValId)});
+        part.vecRead.push_back({static_cast<uint32_t>(vecValIdInSMem), static_cast<uint16_t>(vecLength), isConstVec,
+                                static_cast<uint16_t>(offset), static_cast<uint32_t>(vecReadOpIndexIds[0]),
+                                static_cast<uint32_t>(vecReadOpIndexIds[1]),
+                                static_cast<uint32_t>(vecReadOpIndexIds[2]),
+                                static_cast<uint32_t>(vecReadOpIndexIds[3]), static_cast<uint32_t>(outRangeValueId),
+                                static_cast<uint32_t>(resultValId)});
 
         assert(opIndex < 32);
         opIndex++;
@@ -1715,15 +1689,15 @@ void MultiRegionMicroPartScheduler::scheduleSpecialMicroPart(const PartitioningG
         auto v1Val = vecLogicOp.getV1();
         assert(valToValId.contains(v1Val));
         auto v1ValIdInSmem_raw = valToValId.at(v1Val);
-        assert(v1ValIdInSmem_raw < UINT16_MAX);
-        auto v1ValIdInSmem = static_cast<uint16_t>(v1ValIdInSmem_raw);
+        assert(v1ValIdInSmem_raw < UINT32_MAX);
+        auto v1ValIdInSmem = static_cast<uint32_t>(v1ValIdInSmem_raw);
         auto v1VecLength = v1Val.getType().getLength();
 
         auto v2Val = vecLogicOp.getV2();
         assert(valToValId.contains(v2Val));
         auto v2ValIdInSmem_raw = valToValId.at(v2Val);
-        assert(v2ValIdInSmem_raw < UINT16_MAX);
-        auto v2ValIdInSmem = static_cast<uint16_t>(v2ValIdInSmem_raw);
+        assert(v2ValIdInSmem_raw < UINT32_MAX);
+        auto v2ValIdInSmem = static_cast<uint32_t>(v2ValIdInSmem_raw);
         auto v2VecLength = v2Val.getType().getLength();
 
         assert(v1VecLength == v2VecLength);
@@ -1733,8 +1707,8 @@ void MultiRegionMicroPartScheduler::scheduleSpecialMicroPart(const PartitioningG
         auto resultVal = vecLogicOp.getResult();
         assert(valToValId.contains(resultVal));
         auto resultValIdInSmem_raw = valToValId.at(resultVal);
-        assert(resultValIdInSmem_raw < UINT16_MAX);
-        auto resultValIdInSmem = static_cast<uint16_t>(resultValIdInSmem_raw);
+        assert(resultValIdInSmem_raw < UINT32_MAX);
+        auto resultValIdInSmem = static_cast<uint32_t>(resultValIdInSmem_raw);
 
         assert(v1VecLength < UINT16_MAX);
 
@@ -1754,15 +1728,15 @@ void MultiRegionMicroPartScheduler::scheduleSpecialMicroPart(const PartitioningG
         auto v1Val = vecArithOp.getV1();
         assert(valToValId.contains(v1Val));
         auto v1ValIdInSmem_raw = valToValId.at(v1Val);
-        assert(v1ValIdInSmem_raw < UINT16_MAX);
-        auto v1ValIdInSmem = static_cast<uint16_t>(v1ValIdInSmem_raw);
+        assert(v1ValIdInSmem_raw < UINT32_MAX);
+        auto v1ValIdInSmem = static_cast<uint32_t>(v1ValIdInSmem_raw);
         auto v1VecLength = v1Val.getType().getLength();
 
         auto v2Val = vecArithOp.getV2();
         assert(valToValId.contains(v2Val));
         auto v2ValIdInSmem_raw = valToValId.at(v2Val);
-        assert(v2ValIdInSmem_raw < UINT16_MAX);
-        auto v2ValIdInSmem = static_cast<uint16_t>(v2ValIdInSmem_raw);
+        assert(v2ValIdInSmem_raw < UINT32_MAX);
+        auto v2ValIdInSmem = static_cast<uint32_t>(v2ValIdInSmem_raw);
         auto v2VecLength = v2Val.getType().getLength();
 
         assert(v1VecLength == v2VecLength);
@@ -1772,8 +1746,8 @@ void MultiRegionMicroPartScheduler::scheduleSpecialMicroPart(const PartitioningG
         auto resultVal = vecArithOp.getResult();
         assert(valToValId.contains(resultVal));
         auto resultValIdInSmem_raw = valToValId.at(resultVal);
-        assert(resultValIdInSmem_raw < UINT16_MAX);
-        auto resultValIdInSmem = static_cast<uint16_t>(resultValIdInSmem_raw);
+        assert(resultValIdInSmem_raw < UINT32_MAX);
+        auto resultValIdInSmem = static_cast<uint32_t>(resultValIdInSmem_raw);
         auto resultVecLength = v1Val.getType().getLength();
 
         assert(resultVecLength == v1VecLength);
@@ -1796,12 +1770,12 @@ void MultiRegionMicroPartScheduler::scheduleSpecialMicroPart(const PartitioningG
         auto memEnVal = memReadOp.getEn();
         assert(valToValId.contains(memEnVal));
         auto memEnId = valToValId.at(memEnVal);
-        assert(memEnId < UINT16_MAX);
+        assert(memEnId < UINT32_MAX);
 
         auto memAddrVec = memReadOp.getAddrVec();
         assert(memAddrVec.getType().getLength() == 8 && "Memory address should be a 32 bit vector");
         auto memAddrVecId = valToValId.at(memAddrVec);
-        assert(memAddrVecId < UINT16_MAX);
+        assert(memAddrVecId < UINT32_MAX);
 
         auto hasMultipleWriter = memPool[memValId].hasMultipleWriter;
         auto memBase = memPool[memValId].memBase;
@@ -1810,11 +1784,11 @@ void MultiRegionMicroPartScheduler::scheduleSpecialMicroPart(const PartitioningG
 
         auto resultVal = memReadOp.getResult();
         auto resultValId = valToValId.at(resultVal);
-        assert(resultValId < UINT16_MAX);
+        assert(resultValId < UINT32_MAX);
 
         part.memRead.push_back({hasMultipleWriter, static_cast<uint32_t>(memDepth), memBase,
-                                static_cast<uint16_t>(memEnId), static_cast<uint16_t>(memAddrVecId),
-                                static_cast<uint16_t>(resultValId)});
+                                static_cast<uint32_t>(memEnId), static_cast<uint32_t>(memAddrVecId),
+                                static_cast<uint32_t>(resultValId)});
 
         assert(opIndex < 32);
         opIndex++;
@@ -2283,8 +2257,7 @@ mlir::LogicalResult MultiRegionMicroPartScheduler::schedule(mlir::MLIRContext *c
                                                             const mlir::SmallVector<mlir::Value> &exchangeValPool) {
 
   // schedule all registers, memories and exchange values. Also sort registers and exchange writes
-  generateRegMemLayout(rawGraph);
-  generateExchangeLayout(exchangeValPool);
+  if (!layoutPrepared) prepareLayouts(rawGraph, exchangeValPool);
 
   // dedup strings
   collectPrintString(rawGraph, codeGenInfo.printStrings);
@@ -2330,15 +2303,14 @@ mlir::LogicalResult MultiRegionMicroPartScheduler::schedule(mlir::MLIRContext *c
           collectConstantVecs(partData, partInfo);
 
           // allocate space for values in shared mem
-          MicroPartLocalValueAllocator valAllocator;
-          valAllocator.collectValueLifetime(partData);
-          valAllocator.populateInitialPinnedVals(partData, constValToRawValue);
-
-#ifdef VAL_ALLOCATOR_DONT_RECLAIM
-          valAllocator.allocateLocalValuesWithoutReclaim();
-#else
-      valAllocator.allocateLocalValues();
-#endif
+          auto allocation = partData.preparedAllocation;
+          if (!allocation) {
+            allocation = std::make_shared<MicroPartLocalValueAllocator>();
+            allocation->collectValueLifetime(partData);
+            allocation->populateInitialPinnedVals(partData, constValToRawValue);
+            allocation->allocateLocalValues();
+          }
+          auto &valAllocator = *allocation;
           // save const value pool
           std::swap(partInfo.constValuePool, valAllocator.compactConstValPool);
           partInfo.numConstsInValuePool = partInfo.constValuePool.size();
@@ -2360,10 +2332,10 @@ mlir::LogicalResult MultiRegionMicroPartScheduler::schedule(mlir::MLIRContext *c
               << partInfo.constVecPool.size() << "\n";
           llvm::outs() << oss.str();
 
-          if (valAllocator.numTotalValSize >= UINT16_MAX) {
+          if (valAllocator.numTotalValSize > toucanGPUSim::widePoolMaxBytes) {
             oss.str("");
             oss << "Region " << regionId << " part " << partId << " allocator requires " << valAllocator.numTotalValSize
-                << " total bytes, exceeds UINT16_MAX, cannot proceed.\n";
+                << " total bytes, exceeds wide pool maximum, cannot proceed.\n";
             llvm::outs() << oss.str();
             // llvm_unreachable("Consider lower PARTITION_MAX_WEIGHT");
             return failure();
@@ -2371,7 +2343,7 @@ mlir::LogicalResult MultiRegionMicroPartScheduler::schedule(mlir::MLIRContext *c
 
           scheduleRegReads(partInfo, partData.allRegReads);
           scheduleExchangeReads(partInfo, partData.allExgReadVals);
-          assert(partInfo.regReadOps.empty() || partInfo.exchangeReadOps.empty());
+          // Precommit stages may read registers and exchange values together.
 
           // Save statistics
           {
@@ -2461,7 +2433,7 @@ mlir::LogicalResult MultiRegionMicroPartScheduler::schedule(mlir::MLIRContext *c
           return success();
         });
 
-    assert(succeeded(scheduleStats));
+    if (failed(scheduleStats)) return failure();
     startPartIdInThisRegion += numPartsInThisRegion;
   }
   assert(startPartIdInThisRegion == totalNumParts);
