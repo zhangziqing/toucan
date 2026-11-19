@@ -1,5 +1,61 @@
 # Toucan
 
+## Nanhu Ready-to-Run Branch
+
+This fork's `nanhu-ready-v1` branch preserves the accepted Nanhu experiment:
+strictly two original RepCut rounds and the versioned `TCWIDE1` wide local-pool
+ABI. It starts at upstream `4dda518`; upstream `main` is retained separately.
+The compiler in this branch emits wide32 designs. The companion runtime also
+supports the frozen legacy16 baseline, selected explicitly at build time.
+
+Five prepartitioned layouts (`partSize=0.10/0.20/0.25/0.30/0.40`), symbols,
+workloads, hash manifests, reference traces and a portable test harness are in
+[benchmarks/nanhu](benchmarks/nanhu/README.md). Models are Git LFS objects in
+the repository, not Release assets. No RTL compiler build is required to run
+these models. Install Git LFS, Python 3.10+ and a C++20-capable CUDA toolkit.
+Because GitHub rejects new LFS uploads to public forks, `.lfsconfig` selects
+the companion `zhangziqing/toucan-nanhu-models` repository's storage endpoint.
+The fork keeps the model pointers and exact hashes at the paths used below.
+
+```sh
+git clone -b nanhu-ready-v1 https://github.com/zhangziqing/toucan.git
+cd toucan
+git lfs pull
+git submodule update --init runtime
+cd benchmarks/nanhu
+python3 nanhu.py verify
+python3 nanhu.py prepare --output prepared
+python3 nanhu.py build --runtime-root ../../runtime --arch sm_86 --build-root build
+```
+
+The runtime is pinned as a submodule; `sm_86` selects RTX 3090 and `sm_120`
+selects RTX PRO 6000 Blackwell with a supporting toolkit. GPU runs require an
+exclusive scheduler allocation and at least 16 GiB free for the device RAM
+model plus design/runtime overhead. Follow the suite's checked acceptance,
+paired benchmark and separate profiling commands. New hardware results must
+be validated; the historical Blackwell results do not validate a new build.
+
+To build the compiler itself with an existing LLVM/MLIR/CIRCT installation:
+
+```sh
+cmake -S . -B build/nanhu -DCMAKE_BUILD_TYPE=Release \
+  -DMLIR_DIR=MLIR_CMAKE_DIR -DCIRCT_DIR=CIRCT_CMAKE_DIR -DLLVM_DIR=LLVM_CMAKE_DIR
+cmake --build build/nanhu --target toucan check-design-graph \
+  check-local-value-allocator check-micro-part-merging check-wide-shift check-array-index -j8
+ctest --test-dir build/nanhu --output-on-failure
+```
+
+Put the built partitioners (`rcp`, `micro_partitioner`) on `PATH` for compiler
+controls and recompilation. Local validation used Clang 19, CIRCT
+`e272897aa3345c0c081551b8433844ce1df3cf82` and LLVM
+`040a641988f6ed6f4fab250706ca2b620c1de2d8`. This newer CIRCT installation was
+supplied explicitly, rather than the original upstream CIRCT submodule.
+Compiler checks passed for allocation, graph construction, micro-part merging,
+772,332 shift comparisons, 23,856 array-index comparisons and strict capacity
+rejection. Two clock controls also passed 1,800 root cycles each against
+Verilator and an independent state/memory oracle. Normalization remains opt-in
+and limited to the documented Nanhu single-clock contract.
+
 Toucan is a **GPU-accelerated RTL simulator** that compiles hardware designs described in FIRRTL/Verilog into efficient GPU simulation kernels.
 
 Toucan lowers CIRCT's HW/Comb/Seq/SV dialects through a custom MLIR dialect pipeline, partitions the design (RepCut + micro-partitioner), and generates CUDA simulation binary.
