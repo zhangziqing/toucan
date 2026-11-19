@@ -35,6 +35,11 @@ model plus design/runtime overhead. Follow the suite's checked acceptance,
 paired benchmark and separate profiling commands. New hardware results must
 be validated; the historical Blackwell results do not validate a new build.
 
+The [validated RTX 3090 sweep](benchmarks/nanhu/RTX3090.md) passed all five
+layouts and measured 1.502561x paired evaluation speedup for p40 versus p20.
+It includes raw timing samples, NCU replay checks, NSYS findings and the
+retained p40 NSYS process-cleanup failure.
+
 To build the compiler itself with an existing LLVM/MLIR/CIRCT installation:
 
 ```sh

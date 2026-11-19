@@ -25,6 +25,11 @@ each payload's size and SHA256, and portable paths are in
 `model_manifest.json`. `p20` is the paired sweep baseline. Comparing `p10`
 and `p20` changes both ABI and partitioning.
 
+The [RTX 3090 retest and profiling report](RTX3090.md) records all five
+passing layouts, fresh paired timings and the retained NSYS p40 cleanup
+failure. The best tested layout, p40, reached 1.502561x paired evaluation
+speedup over p20; all raw timing rows are included with the report.
+
 ## Fetch and build
 
 Run these commands from this directory after `git submodule update --init runtime`
