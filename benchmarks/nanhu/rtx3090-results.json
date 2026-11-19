@@ -1,0 +1,329 @@
+{
+  "schema_version": 1,
+  "status": "ACCEPTED_WITH_NSYS_P40_CLEANUP_FAILURE_RETAINED",
+  "execution_date_UTC": "2026-11-19",
+  "source_commit": "708eb06b4c7725216a8d2b3bdb76aa44d8d2828c",
+  "runtime_commit": "7a8326c812329ce1b4f30ecdbefd94f15c76d577",
+  "model_backing_commit": "905f184220abcafbe538998718773851edefce20",
+  "gpu_uuid": "GPU-5de9e9c8-6d66-e43d-5f9f-d119a5ca997c",
+  "driver": "595.91.07",
+  "CPU_affinity": [
+    2
+  ],
+  "archive": {
+    "bytes": 417919,
+    "sha256": "7668ac747db5aba66fb133322047674068ac63de6a712a63ce2b4c827ccad267"
+  },
+  "payload_manifest": {
+    "bytes": 146392,
+    "sha256": "a425cb54d6035d8991fafedc3408e80c53822b0a76e85e0bf26fe1eccd4f3d33"
+  },
+  "checks": {
+    "archive_members_verified": 790,
+    "manifest_payloads_verified": 789,
+    "source_files_compared_to_published_commits": 66,
+    "full_checked_actions_verified": 10,
+    "timed_samples_verified": 24,
+    "excluded_warmups_verified": 5,
+    "native_profiler_files_readback_verified": 6,
+    "GPU_process_snapshots_verified": 274
+  },
+  "resource_common": {
+    "cooperative_grid": 82,
+    "threads_per_block": 1024,
+    "resident_blocks_per_SM": 1,
+    "registers_per_thread": 64,
+    "local_bytes_per_thread": 176,
+    "API_static_shared_bytes": 16,
+    "batch_kernel": "evalFreeRunningNCycles_Large"
+  },
+  "dynamic_shared_bytes": {
+    "p10": 59983,
+    "p20": 75968,
+    "p25": 82941,
+    "p30": 87885,
+    "p40": 94269
+  },
+  "timings": {
+    "p10": {
+      "pairs": [
+        {
+          "pair": 1,
+          "order": [
+            "p20",
+            "p10"
+          ],
+          "evaluation_speedup": 0.43506264670759637,
+          "wall_speedup": 0.43506663888859504
+        },
+        {
+          "pair": 2,
+          "order": [
+            "p10",
+            "p20"
+          ],
+          "evaluation_speedup": 0.45758655349231814,
+          "wall_speedup": 0.45759120296172795
+        },
+        {
+          "pair": 3,
+          "order": [
+            "p20",
+            "p10"
+          ],
+          "evaluation_speedup": 0.4478596002114887,
+          "wall_speedup": 0.44786311845948445
+        }
+      ],
+      "median_paired_evaluation_speedup": 0.4478596002114887,
+      "median_paired_wall_speedup": 0.44786311845948445,
+      "candidate_medians": {
+        "evaluation_seconds": 27.887458846,
+        "wall_seconds": 27.887810103,
+        "cycles_per_second": 381.707992154,
+        "process_seconds": 51.66151024773717
+      },
+      "baseline_median_wall_seconds": 12.580150149
+    },
+    "p25": {
+      "pairs": [
+        {
+          "pair": 1,
+          "order": [
+            "p20",
+            "p25"
+          ],
+          "evaluation_speedup": 1.201140866661217,
+          "wall_speedup": 1.2011340505261332
+        },
+        {
+          "pair": 2,
+          "order": [
+            "p25",
+            "p20"
+          ],
+          "evaluation_speedup": 1.1759968782846206,
+          "wall_speedup": 1.175991767983914
+        },
+        {
+          "pair": 3,
+          "order": [
+            "p20",
+            "p25"
+          ],
+          "evaluation_speedup": 1.176502071581195,
+          "wall_speedup": 1.1787728107422017
+        }
+      ],
+      "median_paired_evaluation_speedup": 1.176502071581195,
+      "median_paired_wall_speedup": 1.1787728107422017,
+      "candidate_medians": {
+        "evaluation_seconds": 10.57412703,
+        "wall_seconds": 10.574415975,
+        "cycles_per_second": 1006.67498093,
+        "process_seconds": 26.47632538061589
+      },
+      "baseline_median_wall_seconds": 12.580271354
+    },
+    "p30": {
+      "pairs": [
+        {
+          "pair": 1,
+          "order": [
+            "p20",
+            "p30"
+          ],
+          "evaluation_speedup": 1.3728487383886252,
+          "wall_speedup": 1.3728383700776157
+        },
+        {
+          "pair": 2,
+          "order": [
+            "p30",
+            "p20"
+          ],
+          "evaluation_speedup": 1.365310711513573,
+          "wall_speedup": 1.3652996170020804
+        },
+        {
+          "pair": 3,
+          "order": [
+            "p20",
+            "p30"
+          ],
+          "evaluation_speedup": 1.3591055687598748,
+          "wall_speedup": 1.3590953577350524
+        }
+      ],
+      "median_paired_evaluation_speedup": 1.365310711513573,
+      "median_paired_wall_speedup": 1.3652996170020804,
+      "candidate_medians": {
+        "evaluation_seconds": 9.160561073,
+        "wall_seconds": 9.160832259,
+        "cycles_per_second": 1162.01232585,
+        "process_seconds": 24.47519124019891
+      },
+      "baseline_median_wall_seconds": 12.534781557
+    },
+    "p40": {
+      "pairs": [
+        {
+          "pair": 1,
+          "order": [
+            "p20",
+            "p40"
+          ],
+          "evaluation_speedup": 1.5066558751144927,
+          "wall_speedup": 1.5066386757150276
+        },
+        {
+          "pair": 2,
+          "order": [
+            "p40",
+            "p20"
+          ],
+          "evaluation_speedup": 1.5025611699253418,
+          "wall_speedup": 1.5025404323816058
+        },
+        {
+          "pair": 3,
+          "order": [
+            "p20",
+            "p40"
+          ],
+          "evaluation_speedup": 1.5021346897214036,
+          "wall_speedup": 1.5021205331443495
+        }
+      ],
+      "median_paired_evaluation_speedup": 1.5025611699253418,
+      "median_paired_wall_speedup": 1.5025404323816058,
+      "candidate_medians": {
+        "evaluation_seconds": 8.288922492,
+        "wall_seconds": 8.289218856,
+        "cycles_per_second": 1284.19820793,
+        "process_seconds": 24.0528193321079
+      },
+      "baseline_median_wall_seconds": 12.454886484
+    }
+  },
+  "profiling": {
+    "p20": {
+      "NCU_replay_endpoints_verified": 13,
+      "NCU_exported_metric_columns": 565,
+      "NSYS_kernel_seconds_from_SQLite": 12.320697194,
+      "NSYS_status": "passed"
+    },
+    "p40": {
+      "NCU_replay_endpoints_verified": 13,
+      "NCU_exported_metric_columns": 565,
+      "NSYS_kernel_seconds_from_SQLite": 8.288466759,
+      "NSYS_status": "failed"
+    }
+  },
+  "counter_findings": {
+    "p20": {
+      "gpu__time_duration.sum": {
+        "value": "12.473221",
+        "unit": "s"
+      },
+      "sm__throughput.avg.pct_of_peak_sustained_elapsed": {
+        "value": "23.946422",
+        "unit": "%"
+      },
+      "gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed": {
+        "value": "31.984092",
+        "unit": "%"
+      },
+      "dram__bytes.sum.per_second": {
+        "value": "291.464656",
+        "unit": "Gbyte/s"
+      },
+      "sm__warps_active.avg.pct_of_peak_sustained_active": {
+        "value": "67.022263",
+        "unit": "%"
+      },
+      "launch__registers_per_thread": {
+        "value": "64",
+        "unit": "register/thread"
+      },
+      "launch__shared_mem_per_block_dynamic": {
+        "value": "75.968000",
+        "unit": "Kbyte/block"
+      },
+      "launch__occupancy_limit_registers": {
+        "value": "1.000000",
+        "unit": "block"
+      },
+      "launch__occupancy_limit_shared_mem": {
+        "value": "1.000000",
+        "unit": "block"
+      },
+      "smsp__average_warps_issue_stalled_barrier_per_issue_active.ratio": {
+        "value": "19.472699",
+        "unit": "inst"
+      },
+      "smsp__average_warps_issue_stalled_long_scoreboard_per_issue_active.ratio": {
+        "value": "15.141017",
+        "unit": "inst"
+      },
+      "smsp__average_warps_issue_stalled_short_scoreboard_per_issue_active.ratio": {
+        "value": "1.205944",
+        "unit": "inst"
+      }
+    },
+    "p40": {
+      "gpu__time_duration.sum": {
+        "value": "8.369658",
+        "unit": "s"
+      },
+      "sm__throughput.avg.pct_of_peak_sustained_elapsed": {
+        "value": "23.546788",
+        "unit": "%"
+      },
+      "gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed": {
+        "value": "35.178652",
+        "unit": "%"
+      },
+      "dram__bytes.sum.per_second": {
+        "value": "320.576051",
+        "unit": "Gbyte/s"
+      },
+      "sm__warps_active.avg.pct_of_peak_sustained_active": {
+        "value": "66.984239",
+        "unit": "%"
+      },
+      "launch__registers_per_thread": {
+        "value": "64",
+        "unit": "register/thread"
+      },
+      "launch__shared_mem_per_block_dynamic": {
+        "value": "94.269000",
+        "unit": "Kbyte/block"
+      },
+      "launch__occupancy_limit_registers": {
+        "value": "1.000000",
+        "unit": "block"
+      },
+      "launch__occupancy_limit_shared_mem": {
+        "value": "1.000000",
+        "unit": "block"
+      },
+      "smsp__average_warps_issue_stalled_barrier_per_issue_active.ratio": {
+        "value": "18.549339",
+        "unit": "inst"
+      },
+      "smsp__average_warps_issue_stalled_long_scoreboard_per_issue_active.ratio": {
+        "value": "15.723722",
+        "unit": "inst"
+      },
+      "smsp__average_warps_issue_stalled_short_scoreboard_per_issue_active.ratio": {
+        "value": "1.113228",
+        "unit": "inst"
+      }
+    }
+  },
+  "scope": "Oracle PC/instruction columns; sampled watches; no cross-layout state-pool comparison.",
+  "NSYS_p40_original_failure": "Owned descendants remain: [4111056]",
+  "lock_released": true,
+  "owned_processes_gone_at_UTC": "2026-11-19T18:08:48.268634+00:00"
+}
