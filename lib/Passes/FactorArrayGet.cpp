@@ -78,7 +78,7 @@ struct LowerArrayMux : OpRewritePattern<comb::MuxOp> {
       assert(isa<hw::AggregateConstantOp>(valOp));
 
       for (auto eachConst : cast<hw::AggregateConstantOp>(valOp).getFields().getValue()) {
-        auto constIntAttr = eachConst.cast<mlir::IntegerAttr>();
+        auto constIntAttr = ::mlir::cast<mlir::IntegerAttr>(eachConst);
         auto constOp = rewriter.create<hw::ConstantOp>(valOp->getLoc(), constIntAttr);
         elms.push_back(constOp.getResult());
       }
@@ -138,7 +138,7 @@ struct ExpandVectorConcat : OpRewritePattern<hw::ArrayConcatOp> {
       } else if (auto constArrayOp = dyn_cast<hw::AggregateConstantOp>(valDefiningOp)) {
         // const vec
         for (auto eachConst : constArrayOp.getFields().getValue()) {
-          auto constIntAttr = eachConst.cast<mlir::IntegerAttr>();
+          auto constIntAttr = ::mlir::cast<mlir::IntegerAttr>(eachConst);
           auto constOp = rewriter.create<hw::ConstantOp>(op->getLoc(), constIntAttr);
           newVecElems.push_back(constOp.getResult());
         }
@@ -190,7 +190,7 @@ struct FactorArrayGetMuxPass : toucan::impl::FactorArrayGetMuxBase<FactorArrayGe
   LogicalResult runOnModule(hw::HWModuleOp mod) {
     SmallVector<Operation *> toRemove;
 
-    return applyPatternsAndFoldGreedily(mod, *patterns);
+    return applyPatternsGreedily(mod, *patterns);
   }
 
   void runOnOperation() final {

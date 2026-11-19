@@ -135,7 +135,7 @@ struct FlattenPass : toucan::impl::FlattenBase<FlattenPass> {
     // mapping.map(bodyBlock->getArguments(), inst->getOperands());
     for (auto [inputVal, valName] : zip(inst.getInputs(), inst.getArgNames())) {
       // input values are transformed to a register with writer only
-      auto valueNewName = (instName + "." + valName.cast<StringAttr>().getValue()).str();
+      auto valueNewName = (instName + "." + ::mlir::cast<StringAttr>(valName).getValue()).str();
       auto valueNewNameAttr = StringAttr::get(context, valueNewName);
 
       if (isa<seq::ClockType>(inputVal.getType()) || hw::getBitWidth(inputVal.getType()) <= 0) {
@@ -156,7 +156,7 @@ struct FlattenPass : toucan::impl::FlattenBase<FlattenPass> {
       } else {
         // input values are transformed to a register with writer only
         auto valueWidth = hw::getBitWidth(outputVal.getType());
-        auto valueNewName = (instName + "." + valName.cast<StringAttr>().getValue()).str();
+        auto valueNewName = (instName + "." + ::mlir::cast<StringAttr>(valName).getValue()).str();
         auto valueNewNameAttr = StringAttr::get(context, valueNewName);
 
         auto regVal = createRegAndReturnSingleReadValue(valueWidth, inst->getLoc(), rewriter, valueNewNameAttr);
@@ -230,7 +230,7 @@ struct FlattenPass : toucan::impl::FlattenBase<FlattenPass> {
     }
     for (auto val : inst.getResults()) {
       auto argId = val.getResultNumber();
-      auto argName = inst.getResultName(argId).getValue();
+      auto argName = ::mlir::cast<StringAttr>(inst.getResultNames()[argId]).getValue();
       auto newVal = getMap(val);
       if (auto valDefOp = newVal.getDefiningOp()) {
         // Add namehint
@@ -311,7 +311,7 @@ struct FlattenPass : toucan::impl::FlattenBase<FlattenPass> {
       rewriter.setInsertionPoint(outputOp);
 
       for (auto [outVal, valName] : zip(outputOp.getOutputs(), topMod.getOutputNames())) {
-        auto argName = valName.cast<StringAttr>().getValue();
+        auto argName = ::mlir::cast<StringAttr>(valName).getValue();
         auto valueNewNameAttr = rewriter.getStringAttr(argName);
 
         createRegAndWrite(outputOp.getOperation(), outVal, rewriter, valueNewNameAttr);

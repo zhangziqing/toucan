@@ -96,7 +96,7 @@ struct SplitFirMemRWPortsPass : toucan::impl::SplitFirMemRWPortsBase<SplitFirMem
   LogicalResult runOnModule(hw::HWModuleOp mod) {
     SmallVector<Operation *> toRemove;
 
-    return applyPatternsAndFoldGreedily(mod, *patterns);
+    return applyPatternsGreedily(mod, *patterns);
   }
 
   void runOnOperation() final {

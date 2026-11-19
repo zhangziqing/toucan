@@ -47,7 +47,7 @@ struct EnsureNoClockOpPass : toucan::impl::EnsureNoClockOpBase<EnsureNoClockOpPa
 
     for (auto &stmt : mod.getOps()) {
       if (isa<seq::ToClockOp>(stmt) || isa<seq::FromClockOp>(stmt) || isa<seq::ConstClockOp>(stmt) ||
-          isa<seq::ClockGateOp>(stmt) || isa<seq::ClockDivider>(stmt) || isa<seq::ClockMuxOp>(stmt)) {
+          isa<seq::ClockGateOp>(stmt) || isa<seq::ClockDividerOp>(stmt) || isa<seq::ClockMuxOp>(stmt)) {
         stmt.emitError() << "Clock-related operations are not supported!";
         return failure();
       }

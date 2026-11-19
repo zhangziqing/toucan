@@ -75,7 +75,7 @@ struct LowerConstArrayTo4B : OpRewritePattern<hw::AggregateConstantOp> {
 
     auto constArrayValues = constArrayOp.getFields().getValue();
 
-    auto elemWidth = hw::getBitWidth((constArrayValues.begin()->cast<mlir::IntegerAttr>().getType()));
+    auto elemWidth = hw::getBitWidth((::mlir::cast<mlir::IntegerAttr>(*constArrayValues.begin()).getType()));
     auto numChunks = (elemWidth + 3) / 4;
     for (size_t i = 0; i < static_cast<size_t>(numChunks); i++) {
       array_values.push_back({});

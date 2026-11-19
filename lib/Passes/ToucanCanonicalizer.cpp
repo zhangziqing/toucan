@@ -82,7 +82,7 @@ struct ToucanCanonicalizerPass : toucan::impl::ToucanCanonicalizerBase<ToucanCan
   }
 
   LogicalResult runFlatten() {
-    LogicalResult converged = applyPatternsAndFoldGreedily(getOperation(), *patterns, config);
+    LogicalResult converged = applyPatternsGreedily(getOperation(), *patterns, config);
     if (succeeded(converged))
       return success();
 
@@ -90,7 +90,7 @@ struct ToucanCanonicalizerPass : toucan::impl::ToucanCanonicalizerBase<ToucanCan
   }
 
   LogicalResult runOnModule(hw::HWModuleOp mod) {
-    auto converged = applyPatternsAndFoldGreedily(mod, *patterns, config);
+    auto converged = applyPatternsGreedily(mod, *patterns, config);
 
     if (succeeded(converged))
       return success();

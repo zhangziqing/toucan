@@ -132,11 +132,11 @@ struct FactorBinaryOpPass : toucan::impl::FactorBinaryOpBase<FactorBinaryOpPass>
 
   LogicalResult runOnModule(hw::HWModuleOp mod) {
     GreedyRewriteConfig config;
-    config.maxIterations = 10;
-    config.useTopDownTraversal = true;
-    config.strictMode = GreedyRewriteStrictness::ExistingOps;
+    config.setMaxIterations(10);
+    config.setUseTopDownTraversal(true);
+    config.setStrictness(GreedyRewriteStrictness::ExistingOps);
 
-    auto ret = applyPatternsAndFoldGreedily(mod, *patterns, config);
+    auto ret = applyPatternsGreedily(mod, *patterns, config);
     // This pass won't convert all matched operations. It's fine to fail
     if (failed(ret)) {
       ;

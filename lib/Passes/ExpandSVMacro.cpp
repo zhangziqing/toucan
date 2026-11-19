@@ -108,7 +108,7 @@ struct ExpandSVMacro : toucan::impl::ExpandSVMacroBase<ExpandSVMacro> {
   }
 
   LogicalResult onIfDef(SVMacroContext &mc, sv::IfDefOp &ifDefOp) {
-    auto macroName = ifDefOp.getCond().getIdent();
+    auto macroName = ifDefOp.getCond().getIdent().getValue();
 
     auto validBlock = (mc.macroTable.contains(macroName) ? ifDefOp.getThenBlock() : ifDefOp.getElseBlock());
 

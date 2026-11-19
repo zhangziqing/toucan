@@ -227,7 +227,7 @@ struct RemoveMemMaskPass : toucan::impl::RemoveMemMaskBase<RemoveMemMaskPass> {
 
               for (uint32_t memId = 0; memId < memLanes; memId++) {
                 auto newMem = newMemValues[memId];
-                auto maskLaneWidth = newMem.getType().cast<MemType>().getElementWidth();
+                auto maskLaneWidth = ::mlir::cast<MemType>(newMem.getType()).getElementWidth();
 
                 auto memMaskWidth = hw::getBitWidth(memMask.getType());
                 assert(memId < memMaskWidth);

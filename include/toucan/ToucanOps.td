@@ -48,7 +48,7 @@ def RegReadOp: ToucanOp<"reg_read", [Pure]> {
 
   let builders = [
     OpBuilder<(ins "mlir::Value":$reg), [{
-      build($_builder, $_state, reg.getType().cast<RegType>().getElementType(), reg);
+      build($_builder, $_state, ::mlir::cast<RegType>(reg.getType()).getElementType(), reg);
     }]>
   ];
   
@@ -89,7 +89,7 @@ def DefConstVectorOp : ToucanOp<"const_vector", [Pure]> {
   // let hasVerifier = 1;
   let builders = [
     OpBuilder<(ins "mlir::ArrayAttr":$values), [{
-      auto elemBitWidth = hw::getBitWidth(values[0].cast<IntegerAttr>().getType());
+      auto elemBitWidth = hw::getBitWidth(::mlir::cast<IntegerAttr>(values[0]).getType());
       auto vecType = $_builder.getAttr<toucan::VecType>(true, values.size(), $_builder.getIntegerType(elemBitWidth));
       return build($_builder, $_state, vecType, values);
     }]>
@@ -108,7 +108,7 @@ def DefVectorOp : ToucanOp<"vector", [Pure]> {
   }];
   let builders = [
     OpBuilder<(ins CArg<"mlir::ArrayRef<mlir::Value>","{}">:$inputs), [{
-      auto vecType = $_builder.getAttr<toucan::VecType>(false, inputs.size(), inputs[0].getType().cast<mlir::IntegerType>());
+      auto vecType = $_builder.getAttr<toucan::VecType>(false, inputs.size(), ::mlir::cast<mlir::IntegerType>(inputs[0].getType()));
       return build($_builder, $_state, vecType, inputs);
     }]>
   ];
@@ -127,12 +127,12 @@ def VectorReadOp : ToucanOp<"vec_read", [Pure]> {
   let results = (outs HWIntegerType: $result);
   let builders = [
     OpBuilder<(ins "mlir::Value": $vec, "mlir::Value":$out_range_value, CArg<"mlir::ArrayRef<mlir::Value>","{}">:$indicies), [{
-      auto resultType = vec.getType().cast<VecType>().getElementType();
+      auto resultType = ::mlir::cast<VecType>(vec.getType()).getElementType();
       auto offsetAttr = $_builder.getI16IntegerAttr(0);
       return build($_builder, $_state, resultType, vec, offsetAttr, out_range_value, indicies);
     }]>,
     OpBuilder<(ins "mlir::Value": $vec, "int16_t": $offset, "mlir::Value": $out_range_value, CArg<"mlir::ArrayRef<mlir::Value>","{}">:$indicies), [{
-      auto resultType = vec.getType().cast<VecType>().getElementType();
+      auto resultType = ::mlir::cast<VecType>(vec.getType()).getElementType();
       auto offsetAttr = $_builder.getI16IntegerAttr(offset);
       return build($_builder, $_state, resultType, vec, offsetAttr, out_range_value, indicies);
     }]>
@@ -203,8 +203,8 @@ def VectorArithOp : ToucanOp<"vec_arith", [Pure]> {
 
   let builders = [
     OpBuilder<(ins "toucan::VecArithOpName": $opName, "mlir::Value": $v1, "mlir::Value": $v2), [{
-      auto resultVecLength = v1.getType().cast<VecType>().getLength();
-      auto resultVecElemType = v1.getType().cast<VecType>().getElementType();
+      auto resultVecLength = ::mlir::cast<VecType>(v1.getType()).getLength();
+      auto resultVecElemType = ::mlir::cast<VecType>(v1.getType()).getElementType();
       auto vecType = $_builder.getAttr<toucan::VecType>(false, resultVecLength, resultVecElemType);
       return build($_builder, $_state, vecType, opName, v1, v2);
     }]>,
@@ -230,7 +230,7 @@ def MemReadOp: ToucanOp<"mem_read", [Pure]> {
 
   let builders = [
     OpBuilder<(ins "mlir::Value":$mem, "mlir::Value":$addrVec, "mlir::Value":$en), [{
-      auto dataType = mem.getType().cast<toucan::MemType>().getElementType();
+      auto dataType = ::mlir::cast<toucan::MemType>(mem.getType()).getElementType();
       build($_builder, $_state, dataType, mem, addrVec, en);
     }]>
   ];

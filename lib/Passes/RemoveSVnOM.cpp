@@ -60,6 +60,19 @@ struct RemoveSVnOMPass : toucan::impl::RemoveSVnOMBase<RemoveSVnOMPass> {
         toRemove.push_back(&inner);
       }
     }
+    for (auto op : toRemove) {
+      for (auto result : op->getResults()) {
+        for (auto user : result.getUsers()) {
+          Operation *root = user;
+          while (root->getParentOp() != mod)
+            root = root->getParentOp();
+          if (!shouldRemove(root)) {
+            op->emitError("Cannot remove an SV/OM value used by hardware logic");
+            return failure();
+          }
+        }
+      }
+    }
     removeOps(toRemove);
     removedOpsInModules += toRemove.size();
 

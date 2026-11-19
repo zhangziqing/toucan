@@ -66,7 +66,6 @@ struct SplitRegistersPass : toucan::impl::SplitRegistersBase<SplitRegistersPass>
         auto elemType = cast<mlir::IntegerType>(regOp.getData().getType());
         // auto regWidth = hw::getBitWidth(elemType);
 
-        auto nextValue = regOp.getNext();
         auto nextValueName = rewriter.getStringAttr(regName + getRegNextSuffix());
 
         // Declare new register in toucan
@@ -97,6 +96,8 @@ struct SplitRegistersPass : toucan::impl::SplitRegistersBase<SplitRegistersPass>
 
         // Factor reg write
 
+        // Re-read after RAUW: a self-holding register's next operand changed.
+        auto nextValue = regOp.getNext();
         if (regOp.hasReset()) {
           auto resetValue = regOp.getResetValue();
           auto resetSignal = regOp.getReset();

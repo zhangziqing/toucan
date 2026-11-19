@@ -627,7 +627,7 @@ struct FactorConcatExtractPass : toucan::impl::FactorConcatExtractBase<FactorCon
   LogicalResult runOnModule(hw::HWModuleOp mod) {
     // Run this pass module by module may not converge (cannot handle module IO before flatten).
     // Ignore return status
-    auto converged = applyPatternsAndFoldGreedily(mod, *patterns);
+    auto converged = applyPatternsGreedily(mod, *patterns);
     if (failed(converged)) {
       ;
     }
@@ -647,7 +647,7 @@ struct FactorConcatExtractPass : toucan::impl::FactorConcatExtractBase<FactorCon
     if (modulesToProcess.empty()) {
       // Flatten
       // Don't applyFullConversion, as some case requires multiple iteration
-      auto ret = applyPatternsAndFoldGreedily(mod, *patterns);
+      auto ret = applyPatternsGreedily(mod, *patterns);
       if (failed(ret)) {
         llvm::errs() << "Fail to remove all comb::concat and comb::extract. This is likely due to some IRs not "
                         "correctly removed/converted. Keep going to let it crash.\n";

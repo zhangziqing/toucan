@@ -10,6 +10,8 @@ project(toucan
     VERSION 0.0.0 
     LANGUAGES C CXX)
 
+include(CTest)
+
 # Use an optimized build by default with single-config generators. Multi-config
 # generators select their configuration at build time instead.
 if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
@@ -57,8 +59,10 @@ include(AddMLIR)
 include(HandleLLVMOptions)
 include(AddCIRCT)
 
-include_directories(${LLVM_INCLUDE_DIRS} ${MLIR_INCLUDE_DIRS} ${CIRCT_MAIN_INCLUDE_DIR} ${CIRCT_INCLUDE_DIR})
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include ${CMAKE_CURRENT_BINARY_DIR}/include)
+include_directories(${LLVM_INCLUDE_DIRS} ${MLIR_INCLUDE_DIRS} ${CIRCT_INCLUDE_DIRS}
+                    ${CIRCT_MAIN_INCLUDE_DIR} ${CIRCT_INCLUDE_DIR})
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include ${CMAKE_CURRENT_BINARY_DIR}/include
+                    ${CMAKE_CURRENT_SOURCE_DIR}/include/nanhu)
 
 add_subdirectory(external)
 add_subdirectory(include)

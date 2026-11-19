@@ -488,6 +488,6 @@ void ConstantOp::build(OpBuilder &builder, OperationState &result, IntegerAttr v
 /// constant folding because it only works with values that can be expressed in
 /// an int64_t.  Use APInt's instead.
 void ConstantOp::build(OpBuilder &builder, OperationState &result, Type type, int64_t value) {
-  auto numBits = type.cast<IntegerType>().getWidth();
+  auto numBits = ::mlir::cast<IntegerType>(type).getWidth();
   build(builder, result, APInt(numBits, (uint64_t)value, /*isSigned=*/true));
 }
