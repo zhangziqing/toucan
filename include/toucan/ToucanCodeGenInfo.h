@@ -308,9 +308,9 @@ struct CGOpStatistics {
 struct CGMicroPartLUTTopLevelOp {
   LUTOpName opName;
   // assert size == 3
-  uint16_t op0;
-  uint16_t op1;
-  uint16_t op2;
+  uint32_t op0;
+  uint32_t op1;
+  uint32_t op2;
 };
 struct CGMicroPartLUTMiddleLevelOp {
   LUTOpName opName;
@@ -321,11 +321,11 @@ struct CGMicroPartLUTMiddleLevelOp {
 struct CGMicroPartLUTLastLevelWriteBack {
   uint8_t shuffleId;
 
-  uint16_t result;
+  uint32_t result;
 };
 
 struct CGMicroPartVecRead {
-  uint16_t vecBase;
+  uint32_t vecBase;
   // Note: vecLength is static
   uint16_t vecLength;
   // Note: This offset is a static value!!!!
@@ -333,18 +333,18 @@ struct CGMicroPartVecRead {
   uint16_t offset;
 
   // max addr width: 16
-  uint16_t index0;
-  uint16_t index1;
-  uint16_t index2;
-  uint16_t index3;
-  uint16_t outRangeValue;
+  uint32_t index0;
+  uint32_t index1;
+  uint32_t index2;
+  uint32_t index3;
+  uint32_t outRangeValue;
 
-  uint16_t result;
+  uint32_t result;
 };
 
 struct CGMicroPartVecArith {
-  uint16_t vec1Base;
-  uint16_t vec2Base;
+  uint32_t vec1Base;
+  uint32_t vec2Base;
 
   uint16_t vecLength;
 
@@ -353,12 +353,12 @@ struct CGMicroPartVecArith {
 
   toucan::VecArithOpName opName;
 
-  uint16_t result;
+  uint32_t result;
 };
 
 struct CGMicroPartVecLogic {
-  uint16_t vec1Base;
-  uint16_t vec2Base;
+  uint32_t vec1Base;
+  uint32_t vec2Base;
 
   uint16_t vecLength;
 
@@ -367,7 +367,7 @@ struct CGMicroPartVecLogic {
 
   toucan::VecLogicOpName opName;
 
-  uint16_t result;
+  uint32_t result;
 };
 
 struct CGMicroPartMemRead {
@@ -378,10 +378,10 @@ struct CGMicroPartMemRead {
   // static
   uint64_t memBase;
 
-  uint16_t en;
-  uint16_t addrVec;
+  uint32_t en;
+  uint32_t addrVec;
 
-  uint16_t result;
+  uint32_t result;
 };
 
 struct CGMicroPartInfo {
