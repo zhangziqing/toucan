@@ -1,0 +1,148 @@
+{
+  "schema_version": 1,
+  "baseline": "p20",
+  "cut_target": 0.7,
+  "native_repartitions": [
+    0,
+    0
+  ],
+  "capacity_repair": false,
+  "source_flattened_sha256": "87424bb2a3406cf8dbf256af82b2a305a70d3e91f7c6ad37b04f24237ffd2f04",
+  "wide_compiler_sha256": "3f524ae3aa571648f0433fd998e95e94d494e020abc2dd9aa10b7eda4fc07398",
+  "acceptance_evidence_sha256": {
+    "legacy_and_p20": "e36e13a4492f16f7f863e076de2d39bdd427f6ec14f56d9e5cc531a2995d3623",
+    "larger_sweep": "c8a972f2af8bdfaf2950d843a25b8f5473d99b049223cefd6f8b6cd51ab0f206"
+  },
+  "layouts": {
+    "p10": {
+      "part_size": 0.1,
+      "abi": "legacy16",
+      "directory": "models/p10",
+      "files": {
+        "models/p10/GPUSimDesign.bin": {
+          "bytes": 361906524,
+          "sha256": "19ac921caa72879e305b4efa881662be7d7048354e8a5e5c310d07170eb75d27"
+        },
+        "models/p10/GPUSimSymbols.bin": {
+          "bytes": 46980997,
+          "sha256": "caf8bdfb6d952b6893cc45a6d520a50c507793a95e3fd04bffbca029a0505c7f"
+        },
+        "models/p10/GPUSimIOSymbols.bin": {
+          "bytes": 79717,
+          "sha256": "1abe3a5a593d46688df8de2b8ae9d8821c7a662bbccc04de7274c86ae15027f9"
+        }
+      },
+      "pool_budget_bytes": 65534,
+      "round_partitions": [
+        944,
+        8583
+      ],
+      "max_local_bytes": 59983,
+      "regpool_bytes": 1064832
+    },
+    "p20": {
+      "part_size": 0.2,
+      "abi": "wide32",
+      "directory": "models/p20",
+      "files": {
+        "models/p20/GPUSimDesign.bin": {
+          "bytes": 332805267,
+          "sha256": "045ae3178aa9ed579f82cef4c79365fc58927ce004e2c15c7bf89fa671ab415a"
+        },
+        "models/p20/GPUSimSymbols.bin": {
+          "bytes": 46980997,
+          "sha256": "4da0a32c3d9a7f9681195da1f528e06c500f3255202e933f24e59eaf32d9a50b"
+        },
+        "models/p20/GPUSimIOSymbols.bin": {
+          "bytes": 79717,
+          "sha256": "fd9316775b3f174212c4b4ccdf7bb1e8ebf688f092aaf3e3a0ad7fe42695c4d2"
+        }
+      },
+      "pool_budget_bytes": 98304,
+      "round_partitions": [
+        472,
+        2146
+      ],
+      "max_local_bytes": 75968,
+      "regpool_bytes": 469760
+    },
+    "p25": {
+      "part_size": 0.25,
+      "abi": "wide32",
+      "directory": "models/p25",
+      "files": {
+        "models/p25/GPUSimDesign.bin": {
+          "bytes": 305170221,
+          "sha256": "2c6600e2b0d7d7d9cfe32f5e11fd415fd589944dd3b48be2fe07dc0e9ced1524"
+        },
+        "models/p25/GPUSimSymbols.bin": {
+          "bytes": 46980997,
+          "sha256": "36d277a5054debd67d2d7ac33ce5927bcdeecf973fc71b015006b766e63a49c1"
+        },
+        "models/p25/GPUSimIOSymbols.bin": {
+          "bytes": 79717,
+          "sha256": "a18beccc6b32eb881347f5e88c8f31471bd8697ef3f9e35d6378c32ef13f138c"
+        }
+      },
+      "pool_budget_bytes": 98304,
+      "round_partitions": [
+        378,
+        1375
+      ],
+      "max_local_bytes": 82941,
+      "regpool_bytes": 400256
+    },
+    "p30": {
+      "part_size": 0.3,
+      "abi": "wide32",
+      "directory": "models/p30",
+      "files": {
+        "models/p30/GPUSimDesign.bin": {
+          "bytes": 275087772,
+          "sha256": "39b07df051f04e6e801846bbda3be05498ff124ae1cd2de60ba0aa065d229e14"
+        },
+        "models/p30/GPUSimSymbols.bin": {
+          "bytes": 46980997,
+          "sha256": "b29b7cda5afb6b45a16eea4ff26be4990b6c7f3c8799ed541f26b31df304dd5a"
+        },
+        "models/p30/GPUSimIOSymbols.bin": {
+          "bytes": 79717,
+          "sha256": "39ea7a702a8b1f7d326b211152a491c829664b3b484d9c50a9bbdf57dfb0995d"
+        }
+      },
+      "pool_budget_bytes": 98304,
+      "round_partitions": [
+        315,
+        955
+      ],
+      "max_local_bytes": 87885,
+      "regpool_bytes": 379008
+    },
+    "p40": {
+      "part_size": 0.4,
+      "abi": "wide32",
+      "directory": "models/p40",
+      "files": {
+        "models/p40/GPUSimDesign.bin": {
+          "bytes": 245729238,
+          "sha256": "d0f76fd3f16882c770db625f93e108750e2fa7e7258b8531a9fb9514b22df586"
+        },
+        "models/p40/GPUSimSymbols.bin": {
+          "bytes": 46980997,
+          "sha256": "0ffad23139004b3f90bdd245703ba5a5f13b42b16c2d12b5d6865159b29765a3"
+        },
+        "models/p40/GPUSimIOSymbols.bin": {
+          "bytes": 79717,
+          "sha256": "a3b4c0e56a8e3268c7c2895ae428c8fd3f1355e55c69585f5bbeed1b42716d5f"
+        }
+      },
+      "pool_budget_bytes": 98304,
+      "round_partitions": [
+        236,
+        537
+      ],
+      "max_local_bytes": 94269,
+      "regpool_bytes": 352896
+    }
+  }
+}

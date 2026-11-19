@@ -1,0 +1,26 @@
+[
+  {
+    "name": "SimTop.cpu.l_soc.core_with_l2.core.ctrlBlock_rat.intRat.t1_wSpec_1_data",
+    "width": 8
+  },
+  {
+    "name": "SimTop.cpu.l_soc.core_with_l2.core.ctrlBlock_rat.intRat.t1_wSpec_2_data",
+    "width": 8
+  },
+  {
+    "name": "SimTop.cpu.l_soc.core_with_l2.core.ctrlBlock_rat.intRat.t1_wSpec_3_data",
+    "width": 8
+  },
+  {
+    "name": "SimTop.cpu.l_soc.core_with_l2.core.ctrlBlock_rename.intRefCounter.allocate_1_bits",
+    "width": 8
+  },
+  {
+    "name": "SimTop.cpu.l_soc.core_with_l2.core.ctrlBlock_rename.intRefCounter.allocate_2_bits",
+    "width": 8
+  },
+  {
+    "name": "SimTop.cpu.l_soc.core_with_l2.core.ctrlBlock_rename.intRefCounter.allocate_3_bits",
+    "width": 8
+  }
+]
