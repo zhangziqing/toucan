@@ -43,6 +43,17 @@ using namespace circt;
 
 // #define DEBUG_PRINT_LOCAL_VAL_ALLOC
 
+// Bulk output copies start at byte 16 and include a 16-byte aligned tail.
+// Include that physical span in the capacity used by planning and encoding.
+size_t MicroPartLocalValueAllocator::outputCopyEnd() const {
+  size_t bytes = 0;
+  for (auto value : pinnedOutputVals) {
+    auto it = vecValToLength.find(value);
+    bytes += it == vecValToLength.end() ? 1 : it->second;
+  }
+  return bytes ? numConsts + ((bytes + 15) / 16) * 16 : 0;
+}
+
 void MicroPartLocalValueAllocator::allocateLocalValuesWithoutReclaim() {
 
   assert(valToLifeTime.size() != 0);
@@ -123,12 +134,11 @@ void MicroPartLocalValueAllocator::allocateLocalValuesWithoutReclaim() {
     }
   }
 
-  numTotalValSize = nextAvailableValId;
+  numTotalValSize = std::max<size_t>(nextAvailableValId, outputCopyEnd());
 }
 
 void MicroPartLocalValueAllocator::allocateLocalValues() {
-
-  assert(valToLifeTime.size() != 0);
+  fragmentationStats = {};
 
   mlir::DenseSet<mlir::Value> unPinnedVals;
   unPinnedVals.reserve(valToLifeTime.size());
@@ -370,6 +380,25 @@ void MicroPartLocalValueAllocator::allocateLocalValues() {
               availableValIds.erase(valId);
             }
           } else {
+            // Record eligible holes separately from slots reserved by outputs.
+            size_t eligibleBytes = 0, longestRun = 0, run = 0;
+            for (size_t i = 0; i < candidateValIds.size(); ++i) {
+              if (candidateValIds[i]) {
+                ++eligibleBytes;
+                run = i && candidateValIds[i - 1] &&
+                              availableValIds_vec[i] == availableValIds_vec[i - 1] + 1
+                          ? run + 1
+                          : 1;
+                longestRun = std::max(longestRun, run);
+              } else {
+                run = 0;
+              }
+            }
+            fragmentationStats.fragmentedVectorAppends += eligibleBytes >= vecLength;
+            fragmentationStats.maxEligibleFreeBytesOnAppend =
+                std::max(fragmentationStats.maxEligibleFreeBytesOnAppend, eligibleBytes);
+            fragmentationStats.maxEligibleFreeRunOnAppend =
+                std::max(fragmentationStats.maxEligibleFreeRunOnAppend, longestRun);
             // fail to find sufficient space for entire vector. use some new vars
             uint32_t vecValIdStart = nextAvailableValId;
             valToValId[eachVal] = vecValIdStart;
@@ -488,7 +517,7 @@ void MicroPartLocalValueAllocator::allocateLocalValues() {
     }
   }
 
-  numTotalValSize = nextAvailableValId;
+  numTotalValSize = std::max<size_t>(nextAvailableValId, outputCopyEnd());
 }
 
 void MicroPartLocalValueAllocator::populateInitialPinnedVals(
@@ -563,7 +592,6 @@ void MicroPartLocalValueAllocator::populateInitialPinnedVals(
 
   assert(numOutputVals == pinnedOutputVals.size());
 
-  assert(partData.allRegReads.empty() || partData.allExgReadVals.empty());
   // allocate reg reads
   for (auto &regReadOp : partData.allRegReads) {
     auto inputVal = regReadOp.getResult();
@@ -582,7 +610,14 @@ void MicroPartLocalValueAllocator::populateInitialPinnedVals(
   }
   // allocate exchange reads
   for (auto &inputVal : partData.allExgReadVals) {
-    assert(!pinnedOutputVals.contains(inputVal) && "Possibly an edge from input directly to output");
+    // A final-stage register write may directly consume an exchange input.
+    // Its preallocated output slot also stores the identical input value.
+    if (pinnedOutputVals.contains(inputVal)) {
+      assert(!pinnedInputVals.contains(inputVal));
+      pinnedInputVals.insert(inputVal);
+      ++numInputVals;
+      continue;
+    }
     assert(!pinnedInputVals.contains(inputVal));
     assert(!constVals.contains(inputVal));
 
@@ -849,4 +884,55 @@ void MicroPartLocalValueAllocator::collectValueLifetime(RepCutPartitionCodeGenDa
       valToLifeTime[segmentVal] = {min_start, max_end};
     }
   }
+}
+
+MicroPartLocalValueAllocator::CapacityStats
+MicroPartLocalValueAllocator::getCapacityStats() const {
+  auto result = fragmentationStats;
+  result.constantBytes = numConsts;
+  result.allocatedBytes = numTotalValSize;
+  result.outputCopyEndBytes = outputCopyEnd();
+  auto byteCount = [&](mlir::Value value) -> size_t {
+    auto it = vecValToLength.find(value);
+    return it == vecValToLength.end() ? 1 : it->second;
+  };
+  for (auto value : pinnedInputVals)
+    result.pinnedInputBytes += byteCount(value);
+  for (auto value : pinnedOutputVals)
+    result.pinnedOutputBytes += byteCount(value);
+  // The allocator keeps one additional guard slot outside the free list.
+  result.initialPinnedBytes = result.constantBytes + result.pinnedInputBytes +
+                              result.pinnedOutputBytes + 1;
+  for (auto value : pinnedInputVals)
+    if (pinnedOutputVals.contains(value)) result.initialPinnedBytes -= byteCount(value);
+  std::vector<int64_t> liveDelta(totalLevels + 2), temporaryDelta(totalLevels + 2);
+  for (const auto &[value, lifetime] : valToLifeTime) {
+    // Segment reads share their parent vector's complete storage and lifetime.
+    if (vecSegmentsToVecArith.contains(value) || constVals.contains(value))
+      continue;
+    auto bytes = static_cast<int64_t>(byteCount(value));
+    liveDelta[lifetime.start] += bytes;
+    // All users and producers in a level may run concurrently: release only
+    // after the level, including when a lifetime both starts and ends there.
+    liveDelta[lifetime.end + 1] -= bytes;
+    if (!pinnedInputVals.contains(value) && !pinnedOutputVals.contains(value)) {
+      temporaryDelta[lifetime.start] += bytes;
+      temporaryDelta[lifetime.end + 1] -= bytes;
+    }
+  }
+  int64_t liveBytes = result.constantBytes, temporaryBytes = 0;
+  for (size_t level = 0; level <= totalLevels; ++level) {
+    liveBytes += liveDelta[level];
+    temporaryBytes += temporaryDelta[level];
+    assert(liveBytes >= 0 && temporaryBytes >= 0);
+    if (static_cast<size_t>(liveBytes) > result.peakLiveBytes) {
+      result.peakLiveBytes = liveBytes;
+      result.peakLiveLevel = level;
+    }
+    if (static_cast<size_t>(temporaryBytes) > result.peakTemporaryBytes) {
+      result.peakTemporaryBytes = temporaryBytes;
+      result.peakTemporaryLevel = level;
+    }
+  }
+  return result;
 }

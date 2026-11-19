@@ -31,8 +31,10 @@
 
 namespace toucan {
 
+class MicroPartLocalValueAllocator;
 class RepCutPartitionCodeGenData {
 public:
+  std::shared_ptr<MicroPartLocalValueAllocator> preparedAllocation;
   mlir::SmallVector<mlir::SmallVector<std::shared_ptr<MicroPart>>> mpartLevels;
 
   mlir::SmallVector<toucan::RegReadOp> allRegReads;

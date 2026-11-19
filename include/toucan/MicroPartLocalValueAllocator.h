@@ -38,7 +38,23 @@
 namespace toucan {
 class MicroPartLocalValueAllocator {
 public:
-  size_t numTotalValSize;
+  struct CapacityStats {
+    size_t constantBytes = 0, pinnedInputBytes = 0, pinnedOutputBytes = 0;
+    size_t initialPinnedBytes = 0, peakLiveBytes = 0, peakTemporaryBytes = 0;
+    size_t peakLiveLevel = 0, peakTemporaryLevel = 0, allocatedBytes = 0;
+    size_t outputCopyEndBytes = 0;
+    size_t fragmentedVectorAppends = 0;
+    size_t maxEligibleFreeBytesOnAppend = 0, maxEligibleFreeRunOnAppend = 0;
+
+    bool fitsBudget(size_t budgetBytes) const {
+      return allocatedBytes <= budgetBytes;
+    }
+  };
+
+  // Call after lifetime collection, pin population, and allocation.
+  CapacityStats getCapacityStats() const;
+
+  size_t numTotalValSize = 0;
   // numConsts = compactConstValPool.size()
   size_t numConsts;
   size_t numOutputVals;
@@ -67,6 +83,9 @@ public:
                                  const mlir::DenseMap<mlir::Value, uint32_t> &constValToRawValue);
 
 private:
+  CapacityStats fragmentationStats;
+  size_t outputCopyEnd() const;
+
   struct ValueLifeTime {
     uint32_t start;
     uint32_t end;

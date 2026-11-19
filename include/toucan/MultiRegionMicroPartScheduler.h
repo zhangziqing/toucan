@@ -134,6 +134,13 @@ namespace toucan {
 class MultiRegionMicroPartScheduler : public SchedulerBase {
 public:
   CGInfo codeGenInfo;
+  bool layoutPrepared = false;
+  void prepareLayouts(const PartitioningGraph &graph,
+                      const mlir::SmallVector<mlir::Value> &exchange) {
+    generateRegMemLayout(graph);
+    generateExchangeLayout(exchange);
+    layoutPrepared = true;
+  }
 
   std::vector<std::vector<RepCutPartitionCodeGenData>> regionPartData;
 
