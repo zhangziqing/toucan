@@ -14,6 +14,7 @@
 #include "toucan/ToucanConfigs.h"
 #include "toucan/ToucanOps.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
@@ -24,14 +25,28 @@
 #include <boost/graph/topological_sort.hpp>
 #include <boost/range/iterator_range.hpp>
 
+#include <algorithm>
 #include <cassert>
+#include <cmath>
 #include <cstdint>
 #include <fstream>
 #include <memory>
 #include <utility>
+#include "PartitionLevelIndex.h"
 
 using namespace toucan;
 using namespace mlir;
+
+static llvm::cl::opt<float> region0CutTarget(
+    "region0-cut-target", llvm::cl::desc("Region-zero estimated-node cut fraction"),
+    llvm::cl::init(PARTITIONING_MANAGER_CUT_TARGET));
+static llvm::cl::opt<unsigned> region1Repartitions(
+    "region1-repartitions", llvm::cl::desc("Maximum region-one repartition iterations"),
+    llvm::cl::init(PARTITIONING_MANAGER_MAX_REPARTITION_R1));
+static llvm::cl::opt<unsigned> region0Repartitions(
+    "region0-repartitions", llvm::cl::desc("Maximum region-zero repartition iterations"),
+    llvm::cl::init(PARTITIONING_MANAGER_MAX_REPARTITION_R0));
+
 
 static bool are_ids_consecutive(const PartitioningGraph &g) {
   auto [begin, end] = vertices(g);
@@ -331,14 +346,18 @@ updateValProducingVtxForVecSegmentRead(mlir::DenseMap<mlir::Value, mlir::SmallVe
   }
 
   for (auto &vecVal : allVecVals) {
+    // Copy the producer list before inserting a segment value: insertion can
+    // grow the map and invalidate references to other entries.
+    auto vecIt = valToProducingVtxes.find(vecVal);
+    assert(vecIt != valToProducingVtxes.end());
+    mlir::SmallVector<uint32_t> producingVtxes = vecIt->second;
     for (auto userOp : vecVal.getUsers()) {
       if (auto segReadOp = dyn_cast<toucan::StaticVectorSegmentReadOp>(userOp)) {
-        assert(valToProducingVtxes.contains(vecVal));
         auto segmentVal = segReadOp.getResult();
         if (valToProducingVtxes.contains(segmentVal)) {
-          assert(valToProducingVtxes[segmentVal] == valToProducingVtxes[vecVal]);
+          assert(valToProducingVtxes[segmentVal] == producingVtxes);
         }
-        valToProducingVtxes[segmentVal] = valToProducingVtxes[vecVal];
+        valToProducingVtxes[segmentVal] = producingVtxes;
       }
     }
   }
@@ -544,7 +563,9 @@ int PartitioningManager::findCutPoint() {
     levelId++;
   }
 
-  float region0VtxTarget = PARTITIONING_MANAGER_CUT_TARGET;
+  float region0VtxTarget = region0CutTarget;
+  if (!std::isfinite(region0VtxTarget) || region0VtxTarget <= 0.0f || region0VtxTarget >= 1.0f)
+    llvm::report_fatal_error("region0-cut-target must be finite and between zero and one");
 
   int totalNumVtxes = 0;
   int maxLevels = estimateMPartsPerLevel.size();
@@ -569,8 +590,13 @@ int PartitioningManager::findCutPoint() {
     }
   }
 
-  assert(cutPoint < maxLevels);
-
+  if (maxLevels == 0) llvm::report_fatal_error("Cannot cut an empty graph");
+  // Terminus operations move to region one even when the last level is cut.
+  // Preserve the existing cut exactly whenever it is within graph bounds.
+  if (cutPoint >= maxLevels) {
+    llvm::outs() << "Cut target reaches the graph end; using its last level\n";
+    cutPoint = maxLevels - 1;
+  }
   return cutPoint;
 }
 
@@ -1232,7 +1258,7 @@ mlir::LogicalResult PartitioningManager::runStage2RepCutPartitioner(float partSi
   p_r0.PARTITION_MAX_WEIGHT = PARTITIONING_MANAGER_MAX_WEIGHT_R0;
   p_r0.PARTITION_PREFERRED_WEIGHT = PARTITIONING_MANAGER_PREFERRED_WEIGHT_R0;
   p_r0.targetIb = ibFactor;
-  p_r0.rePartitionMaxIterations = PARTITIONING_MANAGER_MAX_REPARTITION_R0;
+  p_r0.rePartitionMaxIterations = region0Repartitions;
 
   p_r0.setPartitionTarget(partSizeRatio);
   auto ret_r0 = p_r0._partition(context);
@@ -1251,7 +1277,7 @@ mlir::LogicalResult PartitioningManager::runStage2RepCutPartitioner(float partSi
   p_r1.PARTITION_PREFERRED_WEIGHT = expected_r1_weight * 1.1;
   p_r1.PARTITION_MAX_WEIGHT = PARTITIONING_MANAGER_MAX_WEIGHT_RATIO_R1 * expected_r1_weight;
   p_r1.targetIb = ibFactor;
-  p_r1.rePartitionMaxIterations = PARTITIONING_MANAGER_MAX_REPARTITION_R1;
+  p_r1.rePartitionMaxIterations = region1Repartitions;
 
   p_r1.setPartitionTarget(partSizeRatio);
 
@@ -1269,7 +1295,10 @@ mlir::LogicalResult PartitioningManager::runStage2RepCutPartitioner(float partSi
 
 void PartitioningManager::collectRepCutPartitionCodeGenData() {
 
-  auto getCodeGenData = [&](RepCutPartitionCodeGenData &info, PartitioningGraph &partGraph,
+  const PartitionLevelIndex order_r0(boost::num_vertices(*microPartGraph_r0), microPartGraph_r0_levels);
+  const PartitionLevelIndex order_r1(boost::num_vertices(*microPartGraph_r1), microPartGraph_r1_levels);
+
+  auto getCodeGenData = [&](const PartitionLevelIndex &order, RepCutPartitionCodeGenData &info, PartitioningGraph &partGraph,
                             const mlir::SmallVector<uint32_t> &repcutNodes,
                             const mlir::SmallVector<mlir::SmallVector<uint32_t>> &graphLevels,
                             const mlir::SmallVector<mlir::Value> &exchangeValPool) {
@@ -1298,16 +1327,8 @@ void PartitioningManager::collectRepCutPartitionCodeGenData() {
     };
     auto insertActiveVal = [&activeVals](const mlir::Value &val) { activeVals.insert(val); };
 
-    mlir::SmallVector<mlir::SmallVector<uint32_t>> graphLevelOfThisPart;
-    for (uint32_t level_id = 0; level_id < graphLevels.size(); level_id++) {
-      graphLevelOfThisPart.emplace_back();
-
-      for (const auto vtx : graphLevels[level_id]) {
-        if (repcutNodeSet.contains(vtx)) {
-          graphLevelOfThisPart.back().push_back(vtx);
-        };
-      }
-    }
+    auto graphLevelOfThisPart =
+        order.select<mlir::SmallVector<mlir::SmallVector<uint32_t>>>(repcutNodes);
 
     mlir::SmallVector<std::shared_ptr<MicroPart>> specialMPartsInThisLevel;
     mlir::SmallVector<toucan::LUTOp> nopsInThisLevel;
@@ -1567,7 +1588,7 @@ void PartitioningManager::collectRepCutPartitionCodeGenData() {
   for (size_t i = 0; i < repcutPartitions_r0.size(); i++) {
     // llvm::dbgs() << "Working on region 0 part " << i << "\n";
     // parallel?
-    getCodeGenData(partCodeGenData_r0[i], *microPartGraph_r0, repcutPartitions_r0[i], microPartGraph_r0_levels,
+    getCodeGenData(order_r0, partCodeGenData_r0[i], *microPartGraph_r0, repcutPartitions_r0[i], microPartGraph_r0_levels,
                    exchangeValPool);
   }
 
@@ -1576,7 +1597,7 @@ void PartitioningManager::collectRepCutPartitionCodeGenData() {
   for (size_t i = 0; i < repcutPartitions_r1.size(); i++) {
     // llvm::dbgs() << "Working on region 1 part " << i << "\n";
     // parallel?
-    getCodeGenData(partCodeGenData_r1[i], *microPartGraph_r1, repcutPartitions_r1[i], microPartGraph_r1_levels,
+    getCodeGenData(order_r1, partCodeGenData_r1[i], *microPartGraph_r1, repcutPartitions_r1[i], microPartGraph_r1_levels,
                    exchangeValPool);
   }
 }
